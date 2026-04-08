@@ -59,7 +59,7 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 
 ### Milestone 1 — Narrow Happy Path
 
-- [ ] Slice 1: Generate the RAES docs set from one PRD file and the `cli-doc-generator` archetype into a target docs path
+- [x] Slice 1: Generate the RAES docs set from one PRD file and the `cli-doc-generator` archetype into a target docs path
   - Accept one readable PRD file path
   - Accept one target project path
   - Accept one archetype value constrained to `cli-doc-generator`
@@ -114,3 +114,6 @@ A slice is complete only when:
 
 - The first slice should resist the urge to support inline PRDs, auto-detected archetypes, or overwrite logic.
 - Future expansion should come only after the narrow happy path is stable and reviewable.
+- 2026-04-08: Slice 1 was implemented as a small Python module with a thin CLI entry point and a direct `generate_docs(...)` function so the write contract can be tested without adding packaging or framework overhead.
+- 2026-04-08: Tests cover exactly the slice-1 contract: happy-path generation, rejection of unsupported archetypes, and fail-before-write behavior when any required target file already exists.
+- 2026-04-08: Generated docs are intentionally narrow and deterministic. They copy `PRD.md` verbatim, derive the project name from the target path, and seed the other docs from the PRD title plus a few extracted bullet points without deeper parsing.

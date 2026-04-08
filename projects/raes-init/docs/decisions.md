@@ -18,3 +18,15 @@
 - The generator may create the target `docs/` directory if it does not exist.
 - The generator must fail before writing if any required target output file already exists.
 - Overwrite and merge behavior are out of scope for V1.
+
+### 2026-04-08 — Slice 1 ships as a minimal Python module with a thin CLI wrapper
+
+- The first implementation slice uses a single Python module and standard-library argument parsing.
+- Core generation behavior is exposed as a direct function so the contract can be tested without packaging work.
+- Additional abstractions or packaging layers are deferred until validation needs justify them.
+
+### 2026-04-08 — Slice 1 PRD adaptation is intentionally shallow
+
+- `PRD.md` is copied verbatim from the source PRD in the happy path.
+- The generated docs derive project identity from the target path and PRD title from the first markdown heading.
+- Only a small number of PRD bullet points are lifted into generated docs in V1; deeper parsing is deferred.

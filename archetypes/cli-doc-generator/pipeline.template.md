@@ -27,6 +27,8 @@ This template defines the execution structure for CLI-based document generators.
 ## Known Contract Areas
 
 - CLI input arguments / flags
+- Explicit happy-path input contract for V1
+- Target project docs path
 - PRD input file handling
 - Output directory structure
 - Template loading and rendering
@@ -37,6 +39,8 @@ This template defines the execution structure for CLI-based document generators.
 ## Unknowns
 
 - PRD parsing depth
+- Initial happy-path input mode
+- Overwrite behavior when target docs already exist
 - Template adaptation logic
 - User interaction model (prompting vs flags)
 - Handling incomplete inputs
@@ -45,10 +49,11 @@ This template defines the execution structure for CLI-based document generators.
 
 ## Suggested Milestones
 
-### Milestone 1 — Basic CLI Setup
+### Milestone 1 — Establish the Narrow Happy Path
 - [ ] Initialize CLI entry point
-- [ ] Accept input PRD path
-- [ ] Define output directory structure
+- [ ] Define the explicit V1 happy-path input contract
+- [ ] Accept one PRD file path and one explicit archetype selection
+- [ ] Define the target project docs output path
 
 ### Milestone 2 — Template Loading
 - [ ] Load archetype templates
@@ -68,13 +73,14 @@ This template defines the execution structure for CLI-based document generators.
 ### Milestone 5 — Refinement
 - [ ] Improve structure consistency
 - [ ] Add validation and error handling
+- [ ] Define and test behavior when target docs already exist
 - [ ] Review drift and unknown handling
 
 ---
 
 ## Session Workflow
 
-1. Read project docs
+1. Read the project-specific docs for the current generated project
 2. Identify next slice
 3. Write failing test (if applicable)
 4. Implement minimal solution

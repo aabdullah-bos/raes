@@ -28,6 +28,8 @@ It should be adapted, not copied blindly.
 - Prefer deterministic generation over heuristic guessing.
 - Keep template content separate from generated output.
 - Do not hardcode project-specific assumptions into templates.
+- Do not silently widen input modes beyond the currently defined happy path.
+- Fail fast by default when target generated docs already exist, unless the project explicitly defines a different overwrite strategy.
 - Implement the minimum logic required to support the current slice.
 - One slice per session.
 - Stop after completing a slice.
@@ -38,16 +40,20 @@ It should be adapted, not copied blindly.
 ## Contracts
 
 - Input shape (e.g., PRD file, flags, CLI arguments)
+- Initial happy-path input contract should be made explicit in the project `system.md`
 - Output structure (docs directory and required files)
 - Archetype lookup mechanism
 - Template rendering interface
 - File generation behavior (overwrite, merge, or create)
+- Output file write behavior should be explicitly defined before implementation begins
 
 ---
 
 ## Unknowns
 
 - How much structure should be inferred from the PRD
+- What the initial happy-path input mode should be
+- What overwrite strategy should apply when target docs already exist
 - Whether archetype selection is manual or automatic
 - When the system should ask follow-up questions
 - How much transformation should occur from template → output

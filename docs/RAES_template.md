@@ -22,11 +22,16 @@ When starting from an existing PRD:
    - Drift Guards
    - Contracts that are already known
    - Unknowns that should not be silently decided
+   - The explicit V1 happy-path input contract (if applicable)
+   - The intended file write behavior (create / fail / overwrite / merge)
 
 5. Generate an initial slice backlog in `pipeline.md` based on the PRD and current system definition.
 
 6. Do not assume missing contracts are fully known.
    Mark uncertainty explicitly and prefer minimal, reversible early slices.
+
+7. Default to a narrow, explicit starting configuration.
+   Do not silently expand inputs, capabilities, or behaviors beyond what is defined.
 
 The operator is responsible for:
 - supplying or approving the PRD
@@ -157,6 +162,8 @@ Examples:
 - Implement the minimum code required to pass
 - One slice per session
 - Stop after completing a slice
+- Do not silently widen input modes beyond the defined happy path
+- Fail fast when encountering undefined overwrite or file write behavior
 
 ### Contracts
 Define the interfaces that must remain stable unless explicitly changed.
@@ -165,6 +172,8 @@ Examples:
 - API payload shapes
 - Shared type definitions
 - State transition rules
+- Input contract (e.g., PRD file path vs inline input)
+- Output file write behavior (create / fail / overwrite / merge)
 
 ### Anti-Patterns
 Document behaviors the agent should avoid.
@@ -196,7 +205,7 @@ Example:
 
 ## 6. Execution Prompt
 
-Read:
+Read (project-specific docs):
 - docs/PRD.md
 - docs/system.md
 - docs/pipeline.md

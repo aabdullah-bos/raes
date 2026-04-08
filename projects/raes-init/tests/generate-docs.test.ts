@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { GenerationError, generateDocs } from '../src/generate-docs.ts';
+import { main } from '../src/cli.ts';
 
 test('generates the RAES docs set for the narrow happy path', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
@@ -79,7 +80,10 @@ test('rejects unsupported archetypes without writing files', async () => {
       targetProjectPath: targetProject,
       archetype: 'frontend-backend-ai-app'
     }),
-    GenerationError
+    {
+      name: 'Error',
+      message: 'unsupported archetype: frontend-backend-ai-app (supported: cli-doc-generator)'
+    }
   );
 });
 
@@ -99,7 +103,10 @@ test('fails before partial generation when any target file already exists', asyn
       targetProjectPath: targetProject,
       archetype: 'cli-doc-generator'
     }),
-    GenerationError
+    {
+      name: 'Error',
+      message: `conflicting target file: ${join(docsDir, 'system.md')}`
+    }
   );
 
   await assert.rejects(readFile(join(docsDir, 'PRD.md'), 'utf8'));
@@ -107,4 +114,42 @@ test('fails before partial generation when any target file already exists', asyn
   await assert.rejects(readFile(join(docsDir, 'decisions.md'), 'utf8'));
   await assert.rejects(readFile(join(docsDir, 'prd-ux-review.md'), 'utf8'));
   assert.equal(await readFile(join(docsDir, 'system.md'), 'utf8'), 'existing');
+});
+
+test('returns an explicit error for missing CLI input', async () => {
+  const messages: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (message?: unknown) => {
+    messages.push(String(message ?? ''));
+  };
+
+  try {
+    const exitCode = await main([]);
+    assert.equal(exitCode, 1);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.deepEqual(messages, [
+    'missing required input: <prd-path> <target-project-path> <archetype>',
+    'usage: node src/cli.ts <prd-path> <target-project-path> <archetype>'
+  ]);
+});
+
+test('rejects an unreadable PRD path with an explicit message', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const missingPrd = join(tempRoot, 'missing-prd.md');
+  const targetProject = join(tempRoot, 'target-project');
+
+  await assert.rejects(
+    generateDocs({
+      prdPath: missingPrd,
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator'
+    }),
+    {
+      name: 'Error',
+      message: `unable to read PRD file: ${missingPrd}`
+    }
+  );
 });

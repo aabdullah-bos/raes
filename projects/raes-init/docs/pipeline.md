@@ -72,7 +72,7 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 
 ### Milestone 2 — Minimal Validation
 
-- [ ] Slice 2: Add explicit validation and error messages for missing input, unreadable PRD path, unsupported archetype, and conflicting target files
+- [x] Slice 2: Add explicit validation and error messages for missing input, unreadable PRD path, unsupported archetype, and conflicting target files
   - Keep validation deterministic
   - Do not add interactive prompts
 
@@ -123,3 +123,5 @@ A slice is complete only when:
 - 2026-04-08: Slice 1 is now implemented under `projects/raes-init/` as a TypeScript-on-Node module with a thin local CLI entry point and project-local `package.json`.
 - 2026-04-08: The slice-1 tests run with Node's built-in test runner against `.ts` files directly, which keeps setup minimal while staying inside the defined runtime and toolchain.
 - 2026-04-08: The implementation keeps PRD handling intentionally shallow in V1: `PRD.md` is copied verbatim, project identity comes from the target path, and other generated docs are seeded from the PRD title plus a few extracted bullet points.
+- 2026-04-08: Slice 2 adds explicit validation messages for missing CLI input, unreadable PRD paths, unsupported archetypes, and conflicting target files without changing the create-or-fail write contract.
+- 2026-04-08: A minimal project-local TypeScript setup was added (`tsconfig.json` plus a `typecheck` script), but typecheck could not be executed locally because `tsc` is not installed and this slice is constrained from using network installs.

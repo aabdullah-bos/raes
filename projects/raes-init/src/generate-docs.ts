@@ -24,8 +24,14 @@ export async function generateDocs({
   targetProjectPath,
   archetype
 }: GenerateDocsInput): Promise<string[]> {
+  validateRequiredInput('prd path', prdPath);
+  validateRequiredInput('target project path', targetProjectPath);
+  validateRequiredInput('archetype', archetype);
+
   if (archetype !== SUPPORTED_ARCHETYPE) {
-    throw new GenerationError(`unsupported archetype: ${archetype}`);
+    throw new GenerationError(
+      `unsupported archetype: ${archetype} (supported: ${SUPPORTED_ARCHETYPE})`
+    );
   }
 
   const docsDirectory = join(targetProjectPath, 'docs');
@@ -37,7 +43,7 @@ export async function generateDocs({
   try {
     prdText = await readFile(prdPath, 'utf8');
   } catch (error) {
-    throw new GenerationError(`unable to read PRD: ${prdPath}`, { cause: error });
+    throw new GenerationError(`unable to read PRD file: ${prdPath}`, { cause: error });
   }
 
   await mkdir(docsDirectory, { recursive: true });
@@ -70,12 +76,18 @@ async function failIfOutputsExist(outputPaths: string[]): Promise<void> {
   for (const outputPath of outputPaths) {
     try {
       await readFile(outputPath, 'utf8');
-      throw new GenerationError(`target docs already exist: ${outputPath}`);
+      throw new GenerationError(`conflicting target file: ${outputPath}`);
     } catch (error) {
       if (error instanceof GenerationError) {
         throw error;
       }
     }
+  }
+}
+
+function validateRequiredInput(label: string, value: string): void {
+  if (value.trim().length === 0) {
+    throw new GenerationError(`missing required input: ${label}`);
   }
 }
 

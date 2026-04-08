@@ -4,6 +4,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const [prdPath, targetProjectPath, archetype] = argv;
 
   if (!prdPath || !targetProjectPath || !archetype) {
+    console.error('missing required input: <prd-path> <target-project-path> <archetype>');
     console.error('usage: node src/cli.ts <prd-path> <target-project-path> <archetype>');
     return 1;
   }

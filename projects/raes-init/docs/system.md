@@ -1,62 +1,162 @@
-# RAES Init — System Definition
+# raes-init — system.md
 
-This document defines the execution rules for `raes-init`.
+## Purpose
 
-It adapts the `cli-doc-generator` archetype to the current PRD and should be treated as the guardrail document for implementation sessions.
+This document defines the project rules for `raes-init`.
+
+`raes-init` is a CLI-oriented document generator that turns a project PRD plus an archetype into a usable RAES docs set:
+
+- `PRD.md`
+- `system.md`
+- `pipeline.md`
+- `decisions.md`
+- `prd-ux-review.md`
+
+For V1, the default execution shape is the `cli-doc-generator` archetype. The system should adapt that archetype to the input PRD rather than copy template text mechanically.
 
 ---
 
 ## Product Invariants
-- `raes-init` generates project-specific RAES documentation from a PRD plus a selected archetype
-- The generated output is a set of human-editable markdown files, not opaque machine-only artifacts
-- Generated documents must reflect product intent from the input PRD and archetype, without silently replacing that intent
-- The tool must surface uncertainty explicitly rather than inventing missing contracts or UX details
-- V1 scope stops at docs generation; it does not scaffold app code, infrastructure, or product runtime architecture
-- V1 happy path accepts one project name, one PRD file path, and one explicit archetype selection
-- Optional notes and inline PRD text input are out of scope for the first happy path unless a later documented decision expands them
+
+- The tool generates human-readable, human-editable markdown files.
+- Generated docs must preserve the PRD's intent and constraints without replacing them.
+- Unknown or ambiguous product details must remain visible in the output.
+- Output must stay specific to the target project, not generic to the archetype.
+- V1 is docs-only. It does not scaffold application code, repo structure beyond docs, or runtime services.
+- The generated docs must be sufficient to start the RAES execution loop for the target project.
+
+---
 
 ## Drift Guards
-- Treat the PRD loaded from the provided file path as the primary source of product intent for generation
-- Treat the selected archetype as a default execution shape, not as project truth
-- Do not fabricate missing product constraints, CLI semantics, or file-merge behavior
-- Prefer deterministic generation over heuristic guessing
-- Keep generated markdown readable and straightforward to edit manually
-- Implement the minimum logic required for the current slice
-- One slice per session
-- Stop after completing a slice
-- Do not introduce plugin systems, template registries, or extensibility layers before core generation works
-- Do not add support for inline PRD text input or optional notes in the V1 happy path
-- Fail fast if any target output doc already exists rather than overwriting or merging user-authored docs
 
-## Contracts
-- V1 inputs are one project name, one PRD file path input, and one explicit archetype selection
-- Outputs include `PRD.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md` in the target project's docs directory
-- `system.md` must include product invariants, drift guards, contracts, unknowns, anti-patterns, and definition of done
-- `pipeline.md` must include purpose, invariants, known contracts, unknowns, and a small sequential slice backlog
-- `prd-ux-review.md` must extract ambiguities, UX risks, and open questions from the PRD
-- If any target output doc already exists, V1 must stop with an explicit error instead of overwriting or merging files
+- Do not fabricate missing requirements, UX details, or technical constraints.
+- Do not silently widen the V1 input contract beyond the defined happy path.
+- Treat the archetype templates as defaults, not as project truth.
+- Prefer explicit, deterministic generation over heuristic inference.
+- Preserve a clear separation between:
+  - source PRD intent
+  - archetype defaults
+  - project-specific adaptation
+- Fail fast when file write behavior is undefined or unsafe.
+- Keep the initial slice backlog small, sequential, and testable.
+- The first implementation slice must prove the narrow happy path end to end.
+- Do not introduce multi-archetype orchestration, interactive prompting, or merge strategies in V1 unless explicitly decided later.
+
+---
+
+## V1 Happy-Path Input Contract
+
+### Required Inputs
+
+- One readable source PRD markdown file path
+- One target project path
+- One archetype identifier
+
+### V1 Supported Happy Path
+
+- Source PRD input mode: file path only
+- Source PRD format: markdown document with enough product intent to derive project docs
+- Target output location: `<target-project-path>/docs/`
+- Supported archetype in the initial slice: `cli-doc-generator`
+
+### Explicit Constraints
+
+- Inline PRD text is out of scope for the initial slice.
+- Automatic archetype selection is out of scope for the initial slice.
+- Optional notes are not part of the narrow happy path.
+- The system may validate the PRD file exists and is readable, but it should not require deep semantic parsing in the first slice.
+
+---
+
+## File Write Behavior
+
+V1 file generation behavior is intentionally narrow and fail-fast.
+
+### Output Set
+
+The generator is responsible for producing these files under `<target-project-path>/docs/`:
+
+- `PRD.md`
+- `system.md`
+- `pipeline.md`
+- `decisions.md`
+- `prd-ux-review.md`
+
+### Write Rules
+
+- `docs/`:
+  - Create if missing
+  - Reuse if already present and empty of generated RAES docs
+- `PRD.md`:
+  - Create from the source PRD file in the happy path
+  - Fail if `PRD.md` already exists at the target path
+  - Do not overwrite
+  - Do not merge
+- `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`:
+  - Create if absent
+  - Fail if any already exist
+  - Do not overwrite
+  - Do not merge
+
+### Atomicity Expectation
+
+- If any required target file already exists, the run should fail before partial generation.
+- V1 should prefer no-write failure over partial overwrite or best-effort merge behavior.
+
+---
+
+## Known Contracts
+
+- Input is a PRD file path, not a conversational prompt.
+- Output is a project-local docs set under a target `/docs` directory.
+- The default execution shape is derived from the `cli-doc-generator` archetype.
+- Generated markdown must remain editable and legible.
+- `system.md` must include:
+  - product invariants
+  - drift guards
+  - known contracts
+  - unknowns
+  - anti-patterns
+  - definition of done
+- `pipeline.md` must include a small, sequential backlog where the first slice establishes the narrow happy path end to end.
+- `prd-ux-review.md` must surface ambiguity, risks, and open questions rather than silently closing them.
+- `decisions.md` stores only durable decisions, not temporary execution notes.
+
+---
 
 ## Unknowns
-- The exact CLI flag names and invocation syntax for V1
-- How archetype selection is presented to the user in the command interface
-- How much normalization should be applied when copying the input PRD into the generated `PRD.md`
-- Whether the tool should halt on ambiguous PRDs or continue with explicit placeholders
+
+- Whether V1 should accept inline PRD text in addition to file input
+- Whether archetype selection should remain explicit or default silently
+- How much structure should be extracted from a weak or incomplete PRD
+- Whether source PRD content should be copied verbatim, normalized lightly, or reorganized
+- How template adaptation should be implemented without becoming too opinionated
+- Whether future versions should support overwrite confirmation or merge behavior
+- What validation is required before generation beyond file existence and readability
+- When the tool should stop and ask for clarification instead of generating docs with explicit unknowns
+
+---
 
 ## Anti-Patterns
-- Do not treat archetype defaults as durable project decisions without PRD support
-- Do not silently expand V1 beyond the single happy-path input contract
-- Do not overwrite or merge into existing target docs in V1
-- Do not generate polished-sounding filler to hide missing product decisions
-- Do not blend docs generation with code scaffolding or repository setup
-- Do not create large milestone plans before the first generation path is proven
+
+- Do not treat archetype template wording as final project output without adaptation.
+- Do not silently invent contracts for CLI flags, parsing depth, or project structure.
+- Do not add code scaffolding, stack assumptions, or framework-specific guidance to the generated docs.
+- Do not broaden V1 to support multiple input modes in the first slice.
+- Do not overwrite existing docs as a convenience.
+- Do not turn unknowns into implied decisions.
+- Do not create a large backlog before the narrow happy path is proven.
+
+---
 
 ## Definition of Done
+
 A slice is complete only if:
-1. The slice is explicitly named
-2. Tests were written or updated first where applicable
-3. Minimum implementation for that slice is complete
-4. Generated output remains readable, editable markdown
-5. Unknowns are surfaced instead of invented
-6. No unrelated templates or project files were changed
-7. Durable decisions were appended to `projects/raes-init/docs/decisions.md` if needed
-8. Work stopped after the slice completed
+
+1. The slice delivers a single, explicit outcome.
+2. The behavior is testable and bounded.
+3. The implementation preserves the V1 input and write contracts.
+4. Generated docs are project-specific, readable, and editable.
+5. Unknowns remain visible instead of being fabricated.
+6. Any durable new rule is appended to `decisions.md`.
+7. Work stops after the slice is complete.

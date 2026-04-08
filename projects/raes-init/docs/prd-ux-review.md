@@ -1,60 +1,180 @@
-# PRD UX Review
+# raes-init — prd-ux-review.md
 
-## Feature: Project Initialization Input
-Ambiguities:
-- Whether the tool can proceed with partial input outside the narrow V1 happy path
+## Purpose
 
-Risks:
-- Input expectations may drift if later iterations reintroduce multiple PRD input forms without an explicit decision
-- Users may start with incomplete information and assume the generated docs are more authoritative than the input warrants
+This review captures ambiguity, UX risk, and open questions in the `raes-init` PRD before implementation.
 
-Proposed Intent:
-- Starting a project should feel fast and explicit, with one project name, one PRD file path, and one explicit archetype selection clearly required in V1
+The product is a CLI document generator, so the main UX is not visual UI. The critical experience is whether a user can predict what inputs are required, what will be generated, and what happens when the target path already contains docs.
 
-Open Questions:
-- How should the tool communicate V1's intentionally narrow input contract when broader input modes are considered later?
+---
 
-## Feature: Archetype Selection
-Ambiguities:
-- How opinionated archetype defaults should be when the PRD is sparse
+## Feature Review
 
-Risks:
-- Users may mistake archetype defaults for project-specific requirements
-- A wrong archetype choice could produce docs that look plausible but push implementation in the wrong direction
+### 1. Input Collection
 
-Proposed Intent:
-- Archetype choice should be an explicit V1 input that shapes the output enough to provide structure, while remaining visibly subordinate to the PRD
+#### What the PRD says
 
-Open Questions:
-- How should generated docs signal which parts came from archetype defaults versus PRD-derived intent?
+- The system accepts project name, PRD, archetype selection, and optional notes.
+- The PRD may be provided as text or file.
 
-## Feature: Generated RAES Docs Set
-Ambiguities:
-- How much normalization should happen when producing `PRD.md`
-- How much detail should be generated when the source PRD is thin
+#### Ambiguities
 
-Risks:
-- Over-normalization can distort product intent
-- Existing docs can block generation until the operator resolves the conflict explicitly
-- Thin PRDs may lead to polished-looking but low-confidence outputs
+- It is not clear whether project name is required if the target path already identifies the project.
+- It is not clear whether inline PRD text and PRD file input are equally first-class in V1.
+- It is not clear how optional notes influence output or whether they should be preserved in generated docs.
 
-Proposed Intent:
-- Generated docs should feel useful on first pass, obviously editable, honest about gaps, and safe by default when docs already exist
+#### UX Risks
 
-Open Questions:
-- Should generated docs include explicit markers for unresolved unknowns?
+- Too many initial input modes increase setup complexity before the core workflow is proven.
+- Users may not know which fields are truly required for the first successful run.
+- If notes affect output invisibly, generation can feel opaque.
 
-## Feature: Initial Slice Backlog
-Ambiguities:
-- How small the first generation slices should be before PRD adaptation work begins
-- Whether additional validation beyond the narrow happy path belongs in the first milestone or after the happy path works
+#### Proposed V1 Intent
 
-Risks:
-- A backlog that is too broad will blur execution discipline
-- A backlog that is too narrow may omit core reliability concerns such as missing input handling
+- Narrow the first happy path to one readable PRD file path, one target project path, and one archetype.
+- Treat additional input modes as future expansion.
 
-Proposed Intent:
-- The first slices should prove a single end-to-end generation path with the narrow V1 input contract, then add adaptation and validation incrementally
+#### Open Questions
 
-Open Questions:
-- Is fail-fast protection for pre-existing target docs sufficient for the initial implementation milestone?
+- Should project name be derived from the target path in V1?
+- Should optional notes appear anywhere in generated docs if later supported?
+
+---
+
+### 2. Archetype Selection
+
+#### What the PRD says
+
+- Multiple archetypes are listed as possible selections.
+
+#### Ambiguities
+
+- It is not clear whether multiple archetypes exist today or are planned for later.
+- It is not clear whether archetype selection should be explicit or defaulted.
+
+#### UX Risks
+
+- Presenting multiple choices before their behavior is well defined can make the tool feel more capable than it is.
+- Automatic selection could hide important assumptions from the user.
+
+#### Proposed V1 Intent
+
+- Support `cli-doc-generator` as the default and initial execution shape.
+- Keep archetype handling explicit and narrow until the first path is stable.
+
+#### Open Questions
+
+- Should the CLI require the archetype flag even when only one archetype is supported?
+- When more archetypes exist, how should users understand the differences between them?
+
+---
+
+### 3. Output Generation
+
+#### What the PRD says
+
+- The system generates a docs directory containing five markdown files.
+- Files should be readable, editable, and not over-specified.
+
+#### Ambiguities
+
+- It is not defined whether `PRD.md` should be copied verbatim or lightly normalized.
+- It is not defined what happens if some or all target docs already exist.
+- It is not defined whether generation should be atomic.
+
+#### UX Risks
+
+- Silent overwrite would erode trust quickly.
+- Partial generation on failure would leave the target in an unclear state.
+- Excessive normalization could make the user feel the tool rewrote the product intent.
+
+#### Proposed V1 Intent
+
+- Use create-or-fail behavior for the generated docs set.
+- Prefer no-write failure over partial overwrite.
+- Keep PRD handling light and legible.
+
+#### Open Questions
+
+- Should future versions allow explicit overwrite confirmation?
+- Should `PRD.md` preserve the exact original structure or normalize headings when needed?
+
+---
+
+### 4. `system.md` Generation
+
+#### What the PRD says
+
+- `system.md` should combine archetype defaults with PRD-derived constraints and must not fabricate unknowns.
+
+#### Ambiguities
+
+- It is not clear how much of the PRD should be lifted directly versus interpreted.
+- It is not clear how strongly the generated system should constrain later implementation.
+
+#### UX Risks
+
+- If the document is too generic, it will not guide execution.
+- If it is too specific, it may invent constraints the user did not approve.
+
+#### Proposed V1 Intent
+
+- Make contracts explicit only where the PRD or archetype supports them.
+- Put uncertain areas in `Unknowns` rather than implying decisions.
+
+#### Open Questions
+
+- What minimum PRD quality is needed to produce a useful `system.md`?
+
+---
+
+### 5. `pipeline.md` Generation
+
+#### What the PRD says
+
+- The pipeline should be project-specific and organized into small, testable, sequential slices.
+
+#### Ambiguities
+
+- It is not clear how detailed each slice should be.
+- It is not clear how many milestones are useful before implementation begins.
+
+#### UX Risks
+
+- A large backlog creates false precision.
+- Non-sequential slices weaken RAES discipline and make implementation harder to review.
+
+#### Proposed V1 Intent
+
+- Keep the backlog short.
+- Make the first slice prove one end-to-end happy path before refinement work.
+
+#### Open Questions
+
+- How much backlog detail is helpful before actual implementation reveals constraints?
+
+---
+
+### 6. `prd-ux-review.md` Generation
+
+#### What the PRD says
+
+- The tool should extract ambiguous interactions, UX risks, and open questions.
+
+#### Ambiguities
+
+- The PRD is product-focused but only lightly defines operator failure moments and expectations.
+- It is not clear how exhaustive the review should be for a CLI tool.
+
+#### UX Risks
+
+- If the review is too shallow, it misses real ambiguity.
+- If it is too broad, it becomes generic and less actionable.
+
+#### Proposed V1 Intent
+
+- Focus on operator understanding of inputs, output effects, failure behavior, and trust.
+
+#### Open Questions
+
+- Should future versions include a separate operator-journey review for CLI tools?

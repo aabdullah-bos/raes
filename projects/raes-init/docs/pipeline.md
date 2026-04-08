@@ -84,14 +84,14 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 
 ### Milestone 3.5 — Generated Docs Shape Consistency
 
-- [ ] Slice 4: Ensure generated docs consistently include the required RAES sections and headings for the selected archetype
+- [x] Slice 4: Ensure generated docs consistently include the required RAES sections and headings for the selected archetype
   - Verify system.md, pipeline.md, decisions.md, and prd-ux-review.md always produce the expected top-level sections
   - Fail clearly if PRD adaptation would omit a required section
   - Keep output readable and deterministic
 
 ### Milestone 4 — PRD Review Quality
 
-- [ ] Slice 5: Improve `prd-ux-review.md` extraction for ambiguity, operator risk, and open questions in CLI-oriented workflows
+- [x] Slice 5: Improve `prd-ux-review.md` extraction for ambiguity, operator risk, and open questions in CLI-oriented workflows
   - Focus on user expectations, transitions, and failure moments
   - Keep the review concise and reviewable
 
@@ -134,3 +134,7 @@ A slice is complete only when:
 - 2026-04-08: A minimal project-local TypeScript setup was added (`tsconfig.json` plus a `typecheck` script), but typecheck could not be executed locally because `tsc` is not installed and this slice is constrained from using network installs.
 - 2026-04-08: Slice 3 keeps the V1 happy-path contract unchanged but makes PRD adaptation section-aware for `Core Functionality`, `Constraints`, and `Open Questions`.
 - 2026-04-08: Generated `system.md`, `pipeline.md`, and `prd-ux-review.md` now prefer section-matched PRD bullets for known contracts, project-specific constraints, and unknowns before falling back to generic defaults.
+- 2026-04-08: Slice 4 adds a required-heading validator for generated docs so `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md` fail fast if a required RAES section is missing before write.
+- 2026-04-08: The shape guard is intentionally static per generated filename and does not widen the V1 contract or change the create-or-fail output behavior.
+- 2026-04-08: Slice 5 makes `prd-ux-review.md` derive CLI-oriented UX risks from PRD workflow bullets so the review calls out path errors, validation blocks, existing-doc conflicts, and archetype expectations when those failure moments are present.
+- 2026-04-08: The UX-risk extraction remains deterministic and narrow: it only inspects the already-supported PRD sections and falls back to generic review bullets when the PRD does not expose clear workflow risks.

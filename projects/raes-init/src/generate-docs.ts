@@ -11,6 +11,29 @@ const REQUIRED_DOC_NAMES = [
   'prd-ux-review.md'
 ] as const;
 
+const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
+  'PRD.md': [],
+  'system.md': [
+    '## Purpose',
+    '## Product Invariants',
+    '## Drift Guards',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Anti-Patterns',
+    '## Definition of Done'
+  ],
+  'pipeline.md': [
+    '## Purpose',
+    '## Invariants',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Slice Backlog',
+    '## Handoff Notes'
+  ],
+  'decisions.md': ['## Durable Decisions'],
+  'prd-ux-review.md': ['## Purpose', '## Observed Requirements', '## UX Risks', '## Open Questions']
+};
+
 export class GenerationError extends Error {}
 
 export type GenerateDocsInput = {
@@ -73,6 +96,7 @@ export async function generateDocs({
     if (!content) {
       throw new GenerationError(`missing generated content for ${fileName}`);
     }
+    validateGeneratedDocShape(fileName, REQUIRED_DOC_HEADINGS[fileName] ?? [], content);
     await writeFile(outputPath, content, 'utf8');
   }
 
@@ -147,6 +171,20 @@ function extractPrdSections(prdText: string): PrdSections {
   }
 
   return sections;
+}
+
+export function validateGeneratedDocShape(
+  fileName: string,
+  requiredHeadings: string[],
+  documentText: string
+): void {
+  const missingHeadings = requiredHeadings.filter((heading) => !documentText.includes(heading));
+
+  if (missingHeadings.length > 0) {
+    throw new GenerationError(
+      `generated ${fileName} is missing required sections: ${missingHeadings.join(', ')}`
+    );
+  }
 }
 
 function identifySection(heading: string): keyof PrdSections | null {
@@ -303,6 +341,10 @@ function renderPrdUxReview(
   const observedRequirements = renderBullets(prdSections.coreFunctionality, [
     'The PRD should remain the source of truth for operator expectations.'
   ]);
+  const uxRisks = renderBullets(deriveCliUxRisks(prdSections), [
+    'Users may not know what happens when docs already exist at the target path.',
+    'The scope of supported input modes may be unclear if the CLI surface expands early.'
+  ]);
   const openQuestions = renderBullets(prdSections.openQuestions, [
     'Should future versions support inline PRD input?',
     'What level of normalization is appropriate for copied PRD content?'
@@ -321,14 +363,41 @@ function renderPrdUxReview(
     '',
     '## UX Risks',
     '',
-    '- Users may not know what happens when docs already exist at the target path.',
-    '- The scope of supported input modes may be unclear if the CLI surface expands early.',
+    uxRisks,
     '',
     '## Open Questions',
     '',
     openQuestions,
     ''
   ].join('\n');
+}
+
+function deriveCliUxRisks(prdSections: PrdSections): string[] {
+  const sourceBullets = [...prdSections.coreFunctionality, ...prdSections.constraints];
+  const normalizedBullets = sourceBullets.map((bullet) => bullet.toLowerCase());
+  const risks: string[] = [];
+
+  if (normalizedBullets.some((bullet) => bullet.includes('path') || bullet.includes('file'))) {
+    risks.push('Operators need a clear failure moment when the provided file path cannot be read.');
+  }
+
+  if (normalizedBullets.some((bullet) => bullet.includes('validate'))) {
+    risks.push('Operators need immediate feedback when validation blocks generation.');
+  }
+
+  if (normalizedBullets.some((bullet) => bullet.includes('existing docs'))) {
+    risks.push('Operators need a clear explanation when existing docs already exist at the target path.');
+  }
+
+  if (
+    normalizedBullets.some(
+      (bullet) => bullet.includes('archetype') || bullet.includes(SUPPORTED_ARCHETYPE)
+    )
+  ) {
+    risks.push('Operators need to understand the accepted archetype before generation starts.');
+  }
+
+  return risks;
 }
 
 function renderBullets(items: string[], fallbackItems: string[]): string {

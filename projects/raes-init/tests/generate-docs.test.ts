@@ -4,7 +4,11 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { GenerationError, generateDocs } from '../src/generate-docs.ts';
+import {
+  GenerationError,
+  generateDocs,
+  validateGeneratedDocShape
+} from '../src/generate-docs.ts';
 import { main } from '../src/cli.ts';
 
 function sectionBody(documentText: string, heading: string): string {
@@ -215,4 +219,63 @@ test('adapts PRD sections into project-specific constraints, known contracts, an
   assert.doesNotMatch(pipelineKnownContracts, /How much normalization should PRD.md apply/);
 
   assert.match(reviewOpenQuestions, /Should future versions accept inline PRD text/);
+});
+
+test('fails clearly when a generated doc shape omits required sections', () => {
+  assert.throws(
+    () =>
+      validateGeneratedDocShape(
+        'pipeline.md',
+        ['## Purpose', '## Invariants', '## Known Contracts'],
+        ['# sample-project — pipeline.md', '', '## Purpose', '', 'narrow pipeline'].join('\n')
+      ),
+    {
+      name: 'Error',
+      message:
+        'generated pipeline.md is missing required sections: ## Invariants, ## Known Contracts'
+    }
+  );
+});
+
+test('derives CLI-oriented UX risks and open questions from PRD workflow failure moments', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'review-tool');
+
+  await writeFile(
+    sourcePrd,
+    [
+      '# Review Tool',
+      '',
+      '## Core Functionality',
+      '',
+      '- Accept a source PRD markdown file path from the operator.',
+      '- Validate required inputs before generation starts.',
+      '',
+      '## Constraints',
+      '',
+      '- Existing docs must cause the run to fail before any writes.',
+      '- The tool must only support the cli-doc-generator archetype in V1.',
+      '',
+      '## Open Questions',
+      '',
+      '- Should PRD headings be normalized before copying?'
+    ].join('\n'),
+    'utf8'
+  );
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const reviewText = await readFile(join(targetProject, 'docs', 'prd-ux-review.md'), 'utf8');
+  const uxRisks = sectionBody(reviewText, 'UX Risks');
+  const openQuestions = sectionBody(reviewText, 'Open Questions');
+
+  assert.match(uxRisks, /provided file path cannot be read/);
+  assert.match(uxRisks, /validation blocks generation/);
+  assert.match(uxRisks, /existing docs already exist at the target path/);
+  assert.match(openQuestions, /Should PRD headings be normalized before copying/);
 });

@@ -30,3 +30,20 @@
 - `PRD.md` is copied verbatim from the source PRD in the happy path.
 - The generated docs derive project identity from the target path and PRD title from the first markdown heading.
 - Only a small number of PRD bullet points are lifted into generated docs in V1; deeper parsing is deferred.
+
+### 2026-04-08 — Slice 1 initial Python implementation was exploratory and is superseded
+
+- A minimal Python implementation was used to prove the slice-1 contract.
+- This is not the intended long-term runtime or test toolchain for `raes-init`.
+- Future implementation work should use TypeScript running on Node.js.
+
+### 2026-04-08 — V1 implementation language is TypeScript
+
+- `raes-init` V1 implementation language is TypeScript running on Node.js.
+- Python is not part of the intended runtime or test toolchain for this project.
+
+### 2026-04-08 — Slice 1 uses Node's built-in TypeScript-capable runtime path
+
+- Slice 1 uses project-local TypeScript files executed directly by Node.js 24 rather than adding a transpilation step.
+- Tests use Node's built-in test runner from `projects/raes-init/package.json`.
+- Additional compiler or framework setup is deferred until a later slice requires it.

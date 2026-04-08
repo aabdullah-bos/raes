@@ -41,6 +41,7 @@ For V1, the default execution shape is the `cli-doc-generator` archetype. The sy
 - Keep the initial slice backlog small, sequential, and testable.
 - The first implementation slice must prove the narrow happy path end to end.
 - Do not introduce multi-archetype orchestration, interactive prompting, or merge strategies in V1 unless explicitly decided later.
+- Do not introduce implementation languages outside the defined project runtime
 
 ---
 
@@ -86,7 +87,7 @@ The generator is responsible for producing these files under `<target-project-pa
 
 - `docs/`:
   - Create if missing
-  - Reuse if already present and empty of generated RAES docs
+  - Reuse if already present and none of the required generated files exist
 - `PRD.md`:
   - Create from the source PRD file in the happy path
   - Fail if `PRD.md` already exists at the target path
@@ -121,12 +122,16 @@ The generator is responsible for producing these files under `<target-project-pa
 - `pipeline.md` must include a small, sequential backlog where the first slice establishes the narrow happy path end to end.
 - `prd-ux-review.md` must surface ambiguity, risks, and open questions rather than silently closing them.
 - `decisions.md` stores only durable decisions, not temporary execution notes.
+- V1 runtime and test toolchain are TypeScript running on Node.js.
+- Implementation files for `raes-init` must live under `projects/raes-init/`.
+- Project-local dependencies and package metadata must live under `projects/raes-init/`.
+- Do not place `raes-init` source files, tests, caches, or dependency directories at the repository root.
 
 ---
 
 ## Unknowns
 
-- Whether V1 should accept inline PRD text in addition to file input
+- Whether future versions should accept inline PRD text in addition to file input
 - Whether archetype selection should remain explicit or default silently
 - How much structure should be extracted from a weak or incomplete PRD
 - Whether source PRD content should be copied verbatim, normalized lightly, or reorganized

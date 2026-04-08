@@ -23,6 +23,7 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 - Minimal implementation only.
 - No fabrication of missing product details.
 - No overwrite or merge behavior in V1.
+- Do not introduce implementation languages outside the defined project runtime.
 - Stop after slice completion.
 
 ---
@@ -42,6 +43,7 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
   - create missing docs directory
   - create required files if absent
   - fail before writing if any required target file already exists
+- V1 runtime and test toolchain are TypeScript on Node.js.
 
 ---
 
@@ -117,3 +119,7 @@ A slice is complete only when:
 - 2026-04-08: Slice 1 was implemented as a small Python module with a thin CLI entry point and a direct `generate_docs(...)` function so the write contract can be tested without adding packaging or framework overhead.
 - 2026-04-08: Tests cover exactly the slice-1 contract: happy-path generation, rejection of unsupported archetypes, and fail-before-write behavior when any required target file already exists.
 - 2026-04-08: Generated docs are intentionally narrow and deterministic. They copy `PRD.md` verbatim, derive the project name from the target path, and seed the other docs from the PRD title plus a few extracted bullet points without deeper parsing.
+- 2026-04-08: Slice 1 was initially proven with a minimal Python implementation, but the project now defines TypeScript on Node.js as the V1 runtime and test toolchain. Slice 1 is reopened so the implementation matches the system constraints.
+- 2026-04-08: Slice 1 is now implemented under `projects/raes-init/` as a TypeScript-on-Node module with a thin local CLI entry point and project-local `package.json`.
+- 2026-04-08: The slice-1 tests run with Node's built-in test runner against `.ts` files directly, which keeps setup minimal while staying inside the defined runtime and toolchain.
+- 2026-04-08: The implementation keeps PRD handling intentionally shallow in V1: `PRD.md` is copied verbatim, project identity comes from the target path, and other generated docs are seeded from the PRD title plus a few extracted bullet points.

@@ -78,13 +78,20 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 
 ### Milestone 3 — Template Adaptation Quality
 
-- [ ] Slice 3: Improve PRD-to-doc adaptation so generated docs better distinguish known contracts, unknowns, and project-specific constraints
+- [x] Slice 3: Improve PRD-to-doc adaptation so generated docs better distinguish known contracts, unknowns, and project-specific constraints
   - Preserve the narrow write contract
   - Avoid generic template leakage into outputs
 
+### Milestone 3.5 — Generated Docs Shape Consistency
+
+- [ ] Slice 4: Ensure generated docs consistently include the required RAES sections and headings for the selected archetype
+  - Verify system.md, pipeline.md, decisions.md, and prd-ux-review.md always produce the expected top-level sections
+  - Fail clearly if PRD adaptation would omit a required section
+  - Keep output readable and deterministic
+
 ### Milestone 4 — PRD Review Quality
 
-- [ ] Slice 4: Improve `prd-ux-review.md` extraction for ambiguity, operator risk, and open questions in CLI-oriented workflows
+- [ ] Slice 5: Improve `prd-ux-review.md` extraction for ambiguity, operator risk, and open questions in CLI-oriented workflows
   - Focus on user expectations, transitions, and failure moments
   - Keep the review concise and reviewable
 
@@ -125,3 +132,5 @@ A slice is complete only when:
 - 2026-04-08: The implementation keeps PRD handling intentionally shallow in V1: `PRD.md` is copied verbatim, project identity comes from the target path, and other generated docs are seeded from the PRD title plus a few extracted bullet points.
 - 2026-04-08: Slice 2 adds explicit validation messages for missing CLI input, unreadable PRD paths, unsupported archetypes, and conflicting target files without changing the create-or-fail write contract.
 - 2026-04-08: A minimal project-local TypeScript setup was added (`tsconfig.json` plus a `typecheck` script), but typecheck could not be executed locally because `tsc` is not installed and this slice is constrained from using network installs.
+- 2026-04-08: Slice 3 keeps the V1 happy-path contract unchanged but makes PRD adaptation section-aware for `Core Functionality`, `Constraints`, and `Open Questions`.
+- 2026-04-08: Generated `system.md`, `pipeline.md`, and `prd-ux-review.md` now prefer section-matched PRD bullets for known contracts, project-specific constraints, and unknowns before falling back to generic defaults.

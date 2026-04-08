@@ -19,6 +19,12 @@ export type GenerateDocsInput = {
   archetype: string;
 };
 
+type PrdSections = {
+  coreFunctionality: string[];
+  constraints: string[];
+  openQuestions: string[];
+};
+
 export async function generateDocs({
   prdPath,
   targetProjectPath,
@@ -51,13 +57,14 @@ export async function generateDocs({
   const projectName = basename(targetProjectPath) || 'project';
   const prdTitle = extractPrdTitle(prdText, projectName);
   const prdBullets = extractPrdBullets(prdText);
+  const prdSections = extractPrdSections(prdText);
 
   const generatedContent = new Map<string, string>([
     ['PRD.md', prdText],
-    ['system.md', renderSystemDoc(projectName, prdTitle, prdBullets)],
-    ['pipeline.md', renderPipelineDoc(projectName, prdTitle, prdBullets)],
+    ['system.md', renderSystemDoc(projectName, prdTitle, prdBullets, prdSections)],
+    ['pipeline.md', renderPipelineDoc(projectName, prdTitle, prdBullets, prdSections)],
     ['decisions.md', renderDecisionsDoc(projectName)],
-    ['prd-ux-review.md', renderPrdUxReview(projectName, prdTitle, prdBullets)]
+    ['prd-ux-review.md', renderPrdUxReview(projectName, prdTitle, prdBullets, prdSections)]
   ]);
 
   for (const outputPath of outputPaths) {
@@ -115,10 +122,71 @@ function extractPrdBullets(prdText: string): string[] {
   return bullets;
 }
 
-function renderSystemDoc(projectName: string, prdTitle: string, prdBullets: string[]): string {
-  const productInvariants = renderBullets(prdBullets, [
+function extractPrdSections(prdText: string): PrdSections {
+  const sections: PrdSections = {
+    coreFunctionality: [],
+    constraints: [],
+    openQuestions: []
+  };
+
+  let activeSection: keyof PrdSections | null = null;
+
+  for (const line of prdText.split('\n')) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('## ')) {
+      activeSection = identifySection(trimmed.slice(3).trim());
+      continue;
+    }
+
+    if (!activeSection || !trimmed.startsWith('- ')) {
+      continue;
+    }
+
+    sections[activeSection].push(trimmed.slice(2).trim());
+  }
+
+  return sections;
+}
+
+function identifySection(heading: string): keyof PrdSections | null {
+  const normalized = heading.trim().toLowerCase();
+
+  if (normalized === 'core functionality') {
+    return 'coreFunctionality';
+  }
+
+  if (normalized === 'constraints') {
+    return 'constraints';
+  }
+
+  if (normalized === 'open questions') {
+    return 'openQuestions';
+  }
+
+  return null;
+}
+
+function renderSystemDoc(
+  projectName: string,
+  prdTitle: string,
+  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  const productInvariants = renderBullets(prdSections.constraints, [
     'The generated docs should preserve the source PRD intent.',
     'Output must remain readable and editable markdown.'
+  ]);
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
+    'Input mode: one readable PRD markdown file path.',
+    'Target location: `<target>/docs/`.',
+    `Supported archetype: \`${SUPPORTED_ARCHETYPE}\`.`,
+    'Generated files: `PRD.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md`.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'How much PRD normalization should be applied beyond copying `PRD.md`.',
+    'How future archetypes should adapt the output set.',
+    'What validation is needed beyond the narrow happy path.'
   ]);
 
   return [
@@ -142,16 +210,11 @@ function renderSystemDoc(projectName: string, prdTitle: string, prdBullets: stri
     '',
     '## Known Contracts',
     '',
-    '- Input mode: one readable PRD markdown file path.',
-    '- Target location: `<target>/docs/`.',
-    `- Supported archetype: \`${SUPPORTED_ARCHETYPE}\`.`,
-    '- Generated files: `PRD.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md`.',
+    knownContracts,
     '',
     '## Unknowns',
     '',
-    '- How much PRD normalization should be applied beyond copying `PRD.md`.',
-    '- How future archetypes should adapt the output set.',
-    '- What validation is needed beyond the narrow happy path.',
+    unknowns,
     '',
     '## Anti-Patterns',
     '',
@@ -168,9 +231,18 @@ function renderSystemDoc(projectName: string, prdTitle: string, prdBullets: stri
   ].join('\n');
 }
 
-function renderPipelineDoc(projectName: string, prdTitle: string, prdBullets: string[]): string {
-  const knownContracts = renderBullets(prdBullets, [
+function renderPipelineDoc(
+  projectName: string,
+  prdTitle: string,
+  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
     'The project should use the PRD as the source of truth for generated docs.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'How much validation should happen before generation.',
+    'How far PRD adaptation should go in later slices.'
   ]);
 
   return [
@@ -201,8 +273,7 @@ function renderPipelineDoc(projectName: string, prdTitle: string, prdBullets: st
     '',
     '## Unknowns',
     '',
-    '- How much validation should happen before generation.',
-    '- How far PRD adaptation should go in later slices.',
+    unknowns,
     '',
     '## Slice Backlog',
     '',
@@ -223,9 +294,18 @@ function renderDecisionsDoc(projectName: string): string {
   return [`# ${projectName} — decisions.md`, '', '## Durable Decisions', ''].join('\n');
 }
 
-function renderPrdUxReview(projectName: string, prdTitle: string, prdBullets: string[]): string {
-  const observedRequirements = renderBullets(prdBullets, [
+function renderPrdUxReview(
+  projectName: string,
+  prdTitle: string,
+  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
     'The PRD should remain the source of truth for operator expectations.'
+  ]);
+  const openQuestions = renderBullets(prdSections.openQuestions, [
+    'Should future versions support inline PRD input?',
+    'What level of normalization is appropriate for copied PRD content?'
   ]);
 
   return [
@@ -246,8 +326,7 @@ function renderPrdUxReview(projectName: string, prdTitle: string, prdBullets: st
     '',
     '## Open Questions',
     '',
-    '- Should future versions support inline PRD input?',
-    '- What level of normalization is appropriate for copied PRD content?',
+    openQuestions,
     ''
   ].join('\n');
 }

@@ -1,37 +1,62 @@
 # raes
-Reusable AI Execution System for turning ambiguity into working code
 
-Turn ambiguity into:
-**decisions → working code → documented learning**
+**R**eusable **A**I **E**xecution **S**ystem for turning ambiguity into working code
+
+Turn ambiguity into decisions, decisions into code, and code into learning   
+RAES does not allow important decisions to remain implicit.
+
+***RAES forces decisions instead of letting AI guess.***
+
+---
+
+## AI Execution Systems
+
+AI Execution Systems are systems that control how AI performs work during execution by forcing decisions to be made, recorded, and reused, enforcing bounded progress, and preserving context over time. They exist to ensure that as AI generates code, the original intent remains aligned—despite ambiguity, iteration, and changing context.
+
+Current approaches to AI-assisted development focus on prompts, specs, or autonomous agents. These improve speed and clarity, but they do not reliably prevent drift during execution. As a result, AI often produces code that is reasonable, but subtly misaligned with what was actually intended.
+
+AI Execution Systems address this gap by introducing structured execution loops, explicit decision checkpoints, and durable context that persists beyond any single interaction.
 
 ---
 
 ## What is RAES?
 
-RAES is a lightweight system for building software with AI.
+**RAES** (Reusable AI Execution System) is a lightweight, portable implementation of an AI Execution System.
 
-It helps you:
+It separates decision-making from implementation, ensuring that important choices are made explicitly instead of being inferred during execution.
+
+It allows:
+
+- humans to define intent and resolve ambiguity
+- AI to implement within controlled boundaries
+
+RAES helps you:
+
 - break work into small, testable slices
 - enforce execution discipline (TDD, one slice at a time)
 - surface ambiguity instead of hiding it
-- document decisions as you go
+- force decisions before proceeding
+- document decisions as they happen
 - avoid drift between intention and implementation
 
 ---
 
 ## Why RAES?
 
-Using AI to build software often breaks down because:
+AI-assisted development often breaks down because:
 
 - the problem isn’t clearly defined
 - the agent does too much, too fast
 - decisions are made implicitly
-- nothing is documented
+- context is lost between iterations
 - progress becomes hard to trust
 
-RAES solves this by introducing:
+Most tools optimize for **speed of execution**.
 
-> **structure, constraints, and feedback loops**
+RAES optimizes for:
+> **reliability of outcomes**
+It does this by introducing:
+> **structure, constraints, and feedback loops during execution—not just before it**
 
 ---
 
@@ -39,12 +64,19 @@ RAES solves this by introducing:
 
 PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD → REPEAT
 
+This loop ensures that:
+
+- work is bounded
+- ambiguity is surfaced
+- decisions are captured
+- progress remains aligned
+
 ---
 
 ## The Key Idea
 
-> Vibe coding is just the execution loop.
-> RAES adds everything around it.
+> Vibe coding optimizes for speed
+> RAES ensures the result is actually right.
 
 ---
 
@@ -59,7 +91,9 @@ A RAES project creates a `/docs` directory:
   decisions.md          # What have we learned?
   prd-ux-review.md      # Where is UX ambiguous?
 
-These documents become your **execution system**.
+These documents are not just documentation.
+
+They are your execution system—the durable context that guides every step.
 
 ---
 
@@ -132,6 +166,7 @@ RAES supports example-based initialization using common project shapes:
 - ai-chat-experience
 - ai-game-loop
 - web-app-no-ai
+- cli-doc-generator *(used to build raes-init)
 
 These provide:
 - default system rules
@@ -155,11 +190,23 @@ These provide:
 
 RAES is designed around a few principles:
 
-- **Make ambiguity visible**
+- **Surface ambiguity**
+- **Force decisions before execution**
+- **Record decisions as part of the system**
 - **Prefer small, reversible steps**
-- **Separate intent from execution**
-- **Document decisions as they happen**
-- **Distribute judgment between human and AI**
+- **Separate intent from implementation**
+- **Distribute decision-making between human and AI**
+
+## Positioning
+
+RAES is not:
+
+- an autonomous agent  
+- a prompt engineering technique  
+- a spec generator
+
+RAES is:
+> **An execution control system for AI-assisted development**
 
 ---
 
@@ -182,11 +229,3 @@ Early, evolving, and actively being used to build itself.
 ## Author
 
 Aquil Abdullah
-
-## Why MIT?
-
-RAES is designed to spread.
-
-You are free to use, modify, and build on it without restriction.
-
-If you find it useful, contribute back or share what you build.

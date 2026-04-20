@@ -48,7 +48,7 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
 export class GenerationError extends Error {}
 
 export type GenerateDocsInput = {
-  prdPath: string;
+  prdPath?: string;
   targetProjectPath: string;
   archetype: string;
 };
@@ -64,9 +64,11 @@ export async function generateDocs({
   targetProjectPath,
   archetype
 }: GenerateDocsInput): Promise<string[]> {
-  validateRequiredInput('prd path', prdPath);
   validateRequiredInput('target project path', targetProjectPath);
   validateRequiredInput('archetype', archetype);
+  if (prdPath !== undefined) {
+    validateRequiredInput('prd path', prdPath);
+  }
 
   if (archetype !== SUPPORTED_ARCHETYPE) {
     throw new GenerationError(
@@ -79,16 +81,21 @@ export async function generateDocs({
 
   await failIfOutputsExist(outputPaths);
 
-  let prdText: string;
-  try {
-    prdText = await readFile(prdPath, 'utf8');
-  } catch (error) {
-    throw new GenerationError(`unable to read PRD file: ${prdPath}`, { cause: error });
-  }
-
   await mkdir(docsDirectory, { recursive: true });
 
   const projectName = basename(targetProjectPath) || 'project';
+
+  let prdText: string;
+  if (prdPath !== undefined) {
+    try {
+      prdText = await readFile(prdPath, 'utf8');
+    } catch (error) {
+      throw new GenerationError(`unable to read PRD file: ${prdPath}`, { cause: error });
+    }
+  } else {
+    prdText = renderPrdStub(projectName);
+  }
+
   const prdTitle = extractPrdTitle(prdText, projectName);
   const prdBullets = extractPrdBullets(prdText);
   const prdSections = extractPrdSections(prdText);
@@ -217,6 +224,23 @@ function identifySection(heading: string): keyof PrdSections | null {
   }
 
   return null;
+}
+
+function renderPrdStub(projectName: string): string {
+  return [
+    `# ${projectName}`,
+    '',
+    '## Overview',
+    '',
+    '## Goals',
+    '',
+    '## Non-Goals',
+    '',
+    '## Constraints',
+    '',
+    '## Open Questions',
+    ''
+  ].join('\n');
 }
 
 function renderSystemDoc(

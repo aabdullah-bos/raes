@@ -144,8 +144,9 @@ test('returns an explicit error for missing CLI input', async () => {
   }
 
   assert.deepEqual(messages, [
-    'missing required input: <prd-path> <target-project-path> <archetype>',
-    'usage: node src/cli.ts <prd-path> <target-project-path> <archetype>'
+    'missing required arguments',
+    'usage: raes-init <target-project-path> <archetype>',
+    '       raes-init --from-prd <prd-path> <target-project-path> <archetype>'
   ]);
 });
 
@@ -321,6 +322,85 @@ test('generates decisions.md with a Decision Log table stub', async () => {
   assert.match(decisionsText, /\| Decision \|/);
   assert.match(decisionsText, /\| Rationale \|/);
   assert.match(decisionsText, /\| Date \|/);
+});
+
+test('generates all 8 files in bare greenfield mode when no prdPath is provided', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'greenfield-tool');
+
+  const generated = await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  assert.deepEqual(generated, [
+    join(docsDir, 'prd.md'),
+    join(docsDir, 'system.md'),
+    join(docsDir, 'pipeline.md'),
+    join(docsDir, 'decisions.md'),
+    join(docsDir, 'prd-ux-review.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md'),
+    join(docsDir, 'raes.config.yaml')
+  ]);
+});
+
+test('bare greenfield prd.md is a stub with expected section headers', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'stub-check-tool');
+
+  await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const prdText = await readFile(join(targetProject, 'docs', 'prd.md'), 'utf8');
+  assert.match(prdText, /## Overview/);
+  assert.match(prdText, /## Goals/);
+  assert.match(prdText, /## Non-Goals/);
+  assert.match(prdText, /## Constraints/);
+  assert.match(prdText, /## Open Questions/);
+});
+
+test('bare greenfield raes.config.yaml has all required source keys', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'greenfield-config-tool');
+
+  await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
+  assert.match(configText, /name: greenfield-config-tool/);
+  assert.match(configText, /build_intent: docs\/prd\.md/);
+  assert.match(configText, /path: docs\/pipeline\.md/);
+  assert.match(configText, /selection_rule: first_unchecked_slice/);
+  assert.match(configText, /durable_decisions: docs\/decisions\.md/);
+  assert.match(configText, /execution_guidance: docs\/execution-guidance\.md/);
+  assert.match(configText, /validation: docs\/validation\.md/);
+});
+
+test('bare greenfield all paths referenced in config exist after init', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'path-check-tool');
+
+  await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  for (const path of [
+    join(docsDir, 'prd.md'),
+    join(docsDir, 'pipeline.md'),
+    join(docsDir, 'decisions.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md')
+  ]) {
+    await assert.doesNotReject(readFile(path, 'utf8'), `expected ${path} to exist`);
+  }
 });
 
 test('derives CLI-oriented UX risks and open questions from PRD workflow failure moments', async () => {

@@ -125,11 +125,6 @@ A slice is complete only when:
   - Produce `docs/raes-reference.md` covering: what RAES is, what it is not, two slice types, config design principle, toolchain, canonical prompt structure, human-in-the-loop position, and explicit gap list
   - No implementation code
 
-- [ ] Review Slice: Update `RAES_template.md` and `README.md` for two-slice-type model
-  - Add Review Slice loop and completion criteria
-  - Update prompt examples to reference config-based routing
-  - Do not change raes-init implementation
-
 - [x] Review Slice: Define minimal `raes.config.yaml` schema
   - Schema defined inline by operator and provided as authoritative input to the execution slice below
   - Keys: project.name, sources.build_intent, sources.next_slice (path + selection_rule), sources.durable_decisions, sources.execution_guidance, sources.validation
@@ -143,10 +138,18 @@ A slice is complete only when:
   - Output set grows from 5 to 8 files; create-or-fail contract is preserved
   - All 12 tests pass; typecheck blocked by missing local `tsc` install (same constraint as prior slices)
 
-- [ ] Review Slice: Define archetype contract
-  - Specify what a RAES archetype must contain to be considered complete
-  - Specify the contract between an archetype and raes-init's generation logic
-  - Required before implementing a second archetype
+- [x] Review Slice: Define archetype contract
+  - `archetypes/cli-doc-generator/README.md` added documenting: templates are human reference docs and brownfield discovery hints, not generation sources for `raes-init`; full table of generated files mapped to config keys; V1 archetype contract (two required template files)
+  - Gaps 4, 5, and 6 in `docs/raes-reference.md` marked resolved; Gap 1 marked resolved retroactively
+
+### Milestone 6 — Multiple Initialization Modes
+
+- [x] Execution Slice: Add bare greenfield mode and `--from-prd` flag to raes-init
+  - CLI now supports two modes: `raes-init <target-path> <archetype>` (bare greenfield) and `raes-init --from-prd <prd-path> <target-path> <archetype>` (PRD-seeded)
+  - Bare greenfield generates the same 8-file output set but with a `prd.md` stub (Overview, Goals, Non-Goals, Constraints, Open Questions) instead of a verbatim PRD copy
+  - `prdPath` is now optional in `GenerateDocsInput`; render functions use existing fallback logic when PRD sections are empty
+  - 4 new tests added for bare greenfield mode; 1 existing CLI test updated for new signature
+  - All 16 tests pass; typecheck clean
 
 ---
 
@@ -171,3 +174,5 @@ A slice is complete only when:
 - 2026-04-08: The UX-risk extraction remains deterministic and narrow: it only inspects the already-supported PRD sections and falls back to generic review bullets when the PRD does not expose clear workflow risks.
 - 2026-04-20: Review Slice — RAES Reference Document completed. `docs/raes-reference.md` produced. Key findings: `raes.config.yaml` does not exist in this repo; the Review Slice type is not formalized in any existing repo artifact; `raes-discover` and `raes-execute` tools exist only in design conversations; existing prompt examples use hardcoded paths and conflict with the evolved config-routed design. Six explicit gaps recorded in Section 8 of the reference document. Next recommended: Update template and README for two-slice model, then define `raes.config.yaml` schema.
 - 2026-04-19: Execution Slice — raes-init now generates 8 files per init: `prd.md` (renamed from `PRD.md`; verbatim source PRD copy), `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md` (new stub), `validation.md` (new stub), `raes.config.yaml` (new; maps all five source keys to generated paths). All 12 tests pass. Typecheck blocked: `tsc` not installed locally (same constraint as prior slices). Naming conflict resolved: `PRD.md` → `prd.md` to match schema `build_intent` key. `system.md` and `prd-ux-review.md` continue to be generated as additional outputs not referenced in `raes.config.yaml`. Next recommended: Review Slice — Update `RAES_template.md` and `README.md` for two-slice-type model.
+- 2026-04-20: Review Slices — `README.md` updated for two-slice-type model (Execution Slice and Review Slice), "What RAES Produces" updated to 8 files with `raes.config.yaml` explained, Example Execution Prompt replaced with config-routed form. `archetypes/cli-doc-generator/README.md` added documenting template-to-output contract. `docs/raes-reference.md` Gaps 1, 4, 5, 6 marked resolved.
+- 2026-04-20: Execution Slice — raes-init now supports two initialization modes. CLI: `raes-init <target-path> <archetype>` (bare greenfield) and `raes-init --from-prd <prd-path> <target-path> <archetype>` (PRD-seeded). `prdPath` is optional in `GenerateDocsInput`; bare greenfield uses `renderPrdStub()` which produces a `prd.md` with section headers (Overview, Goals, Non-Goals, Constraints, Open Questions) and no content; PRD parsing falls back to generic defaults when stub sections are empty. All 16 tests pass; typecheck clean. Next recommended: Review Slice — Assess `raes-init --from-prd` for AI-inference enhancement (requires provider interface design).

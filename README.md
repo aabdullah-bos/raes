@@ -60,11 +60,31 @@ It does this by introducing:
 
 ---
 
-## The Core Loop
+## The Two Slice Types
 
-PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD → REPEAT
+RAES supports two distinct slice types. Slice type determines execution rules.
 
-This loop ensures that:
+### Execution Slice
+
+Used for code changes, behavior changes, and any work verifiable by a passing test.
+
+```
+PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+```
+
+Rules: write failing tests first, implement minimum code, run tests and typecheck, append handoff notes, stop after one slice.
+
+### Review Slice
+
+Used for PRD review, gap analysis, artifact generation, and any work whose output is a new durable artifact — not a code change.
+
+```
+PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
+```
+
+Rules: inspect authoritative artifacts before writing anything, identify concrete gaps explicitly, produce bounded next slices, update pipeline, no implementation code.
+
+Both slice types ensure that:
 
 - work is bounded
 - ambiguity is surfaced
@@ -84,16 +104,23 @@ This loop ensures that:
 
 A RAES project creates a `/docs` directory:
 
+```
 /docs
-  PRD.md                # What are we building?
-  system.md             # What must remain true?
-  pipeline.md           # What are we doing next?
-  decisions.md          # What have we learned?
-  prd-ux-review.md      # Where is UX ambiguous?
+  prd.md                     # What are we building?
+  system.md                  # What must remain true?
+  pipeline.md                # What are we doing next?
+  decisions.md               # What have we learned?
+  prd-ux-review.md           # Where is UX ambiguous?
+  execution-guidance.md      # How should slices be executed?
+  validation.md              # How do we verify correctness?
+  raes.config.yaml           # Where do authoritative sources live?
+```
 
 These documents are not just documentation.
 
-They are your execution system—the durable context that guides every step.
+They are your execution system — the durable context that guides every step.
+
+`raes.config.yaml` is a thin source map. It routes the execution loop to the documents above. Config points to truth; it does not store truth.
 
 ---
 
@@ -103,17 +130,23 @@ They are your execution system—the durable context that guides every step.
 
 2. Create `/docs`:
 
+```
 mkdir docs
-touch docs/PRD.md
+touch docs/prd.md
 touch docs/system.md
 touch docs/pipeline.md
 touch docs/decisions.md
 touch docs/prd-ux-review.md
+touch docs/execution-guidance.md
+touch docs/validation.md
+```
 
 3. Use the RAES template to:
 - define system constraints (`system.md`)
 - generate a slice pipeline (`pipeline.md`)
 - surface UX ambiguity (`prd-ux-review.md`)
+- define execution rules (`execution-guidance.md`)
+- define validation approach (`validation.md`)
 
 4. Run the execution loop:
 
@@ -126,22 +159,34 @@ touch docs/prd-ux-review.md
 
 ## Example Execution Prompt
 
-Read:
-- docs/PRD.md
-- docs/system.md
-- docs/pipeline.md
-- docs/decisions.md
+```
+Read `docs/raes.config.yaml` first and use it to locate the authoritative
+project artifacts for:
+- build intent
+- next slice
+- execution guidance
+- durable decisions
+- validation guidance
 
-Execute the next unchecked slice using strict TDD.
+Then inspect the repository and execute the next slice.
 
-Rules:
-- one slice only
+Execution rules:
+- execute one slice only
+- use the configured next-slice source as the source of truth for what to do next
+- use the configured execution-guidance sources for constraints and definition of done
+- use the configured durable-decisions source for decisions that must persist
 - write failing tests first
-- implement minimum code to pass
-- run tests and typecheck
-- append handoff notes
-- append decisions
-- stop after one slice
+- implement the minimum code required to make those tests pass
+- run tests and typecheck using the project's existing tooling
+- append handoff notes to the configured pipeline file
+- append durable decisions to the configured decisions file only when needed
+- stop immediately after completing the slice
+- if required guidance is missing or ambiguous, flag it before proceeding
+```
+
+For projects without `raes.config.yaml`, inspect the repository for authoritative artifacts and treat what you find as the available truth.
+
+See `docs/raes-reference.md` Section 6 for the full canonical prompt forms for both slice types.
 
 ---
 

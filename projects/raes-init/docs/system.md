@@ -6,7 +6,7 @@ This document defines the project rules for `raes-init`.
 
 `raes-init` is a CLI-oriented document generator that turns a project PRD plus an archetype into a usable RAES docs set:
 
-- `PRD.md`
+- `prd.md`
 - `system.md`
 - `pipeline.md`
 - `decisions.md`
@@ -77,7 +77,7 @@ V1 file generation behavior is intentionally narrow and fail-fast.
 
 The generator is responsible for producing these files under `<target-project-path>/docs/`:
 
-- `PRD.md`
+- `prd.md`
 - `system.md`
 - `pipeline.md`
 - `decisions.md`
@@ -88,7 +88,7 @@ The generator is responsible for producing these files under `<target-project-pa
 - `docs/`:
   - Create if missing
   - Reuse if already present and none of the required generated files exist
-- `PRD.md`:
+- `prd.md`:
   - Create from the source PRD file in the happy path
   - Fail if `PRD.md` already exists at the target path
   - Do not overwrite

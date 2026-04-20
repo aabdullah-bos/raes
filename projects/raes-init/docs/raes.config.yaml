@@ -1,0 +1,19 @@
+# Routes the RAES execution loop to authoritative project artifacts.
+# Config points to truth. Config does not store truth.
+# Provider and model are resolved from environment, not from this file.
+
+project:
+  name: raes-init
+
+sources:
+  build_init: docs/prd.md
+
+  next_slice:
+    path: docs/pipline.md
+    selection_rule: first_unchecked_slice
+
+  durable_decisions: docs/decsions.md
+
+  execution_guidance: docs/system.md
+
+  

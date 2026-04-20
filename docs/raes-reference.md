@@ -260,11 +260,9 @@ The following items are not yet decided or are inconsistent across existing arti
 
 ---
 
-**Gap 1: `raes.config.yaml` schema is not defined**
+**Gap 1: `raes.config.yaml` schema is not defined** ✓ Resolved 2026-04-20
 
-No repo artifact specifies what keys `raes.config.yaml` must contain, what values are valid, or what behavior is expected when a key is absent. The design principle (Section 4) is decided. The schema is not. Any implementation of `raes-discover` or `raes-execute` requires a formal schema.
-
-*Recommended next slice: Define and document the minimal `raes.config.yaml` schema as a Review Slice. No implementation required.*
+The schema was defined and implemented in an Execution Slice (2026-04-19). `raes-init` now generates `raes.config.yaml` with five source keys: `build_intent`, `next_slice` (structured with `path` and `selection_rule`), `durable_decisions`, `execution_guidance`, and `validation`. See `projects/raes-init/src/generate-docs.ts` for the canonical schema and `projects/raes-init/docs/raes.config.yaml` for a live example.
 
 ---
 
@@ -284,24 +282,20 @@ No repo artifact specifies what keys `raes.config.yaml` must contain, what value
 
 ---
 
-**Gap 4: The Review Slice is not formalized in any existing repo artifact**
+**Gap 4: The Review Slice is not formalized in any existing repo artifact** ✓ Resolved 2026-04-20
 
-`RAES_template.md` documents only the execution loop. `README.md` documents only the execution loop. The Review Slice loop (`PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD`) and its distinct rules and completion criteria exist only in the Brownfield PDF and now in this document. The template and README should be updated to reflect both slice types.
+`README.md` updated in a Review Slice (2026-04-20) to document both slice types with their distinct loops, rules, and completion criteria. The two-slice-type model (Execution Slice and Review Slice) is now present in both `README.md` and this document.
 
-*Recommended next slice: Review Slice to update `RAES_template.md` and `README.md` to include the two-slice-type model.*
-
----
-
-**Gap 5: Existing prompt examples use hardcoded paths, not config-based routing**
-
-`README.md` Section "Example Execution Prompt" and `RAES_template.md` Section 6 reference specific file paths (`docs/PRD.md`, `docs/system.md`, etc.) directly. This is the pre-config design. For projects using `raes.config.yaml`, these prompts should route through config. The canonical prompts in Section 6 of this document supersede the earlier examples — but the earlier examples remain in the repo and could mislead new adopters.
-
-*Recommended action: Update both artifacts in the same slice as Gap 4 above.*
+`RAES_template.md` still uses the single-loop model and is a candidate for a future cleanup slice, but it is a reference template rather than operator-facing docs, so it is lower priority.
 
 ---
 
-**Gap 6: Archetype coverage is narrow and undocumented**
+**Gap 5: Existing prompt examples use hardcoded paths, not config-based routing** ✓ Resolved 2026-04-20
 
-`raes-init` supports one archetype (`cli-doc-generator`). The README roadmap lists five planned archetypes. There is no document that defines what an archetype must contain to be considered complete, or what the contract is between an archetype and `raes-init`'s generation logic. Adding a second archetype requires that contract to be explicit.
+`README.md` "Example Execution Prompt" updated to use config-routed form. See `README.md` and Section 6 of this document for canonical prompt forms.
 
-*Recommended next slice: Review Slice to define the archetype contract before implementing a second archetype.*
+---
+
+**Gap 6: Archetype coverage is narrow and undocumented** ✓ Partially resolved 2026-04-20
+
+`archetypes/cli-doc-generator/README.md` added in a Review Slice (2026-04-20). It documents: what the templates are for, how they relate to generated output (reference only, not consumed by `raes-init`), what `raes-init` actually generates, and the V1 archetype contract. The contract between archetypes and generation logic will be formalized before a second archetype is implemented — that formalization is the remaining open work.

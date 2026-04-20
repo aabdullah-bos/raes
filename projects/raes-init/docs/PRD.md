@@ -60,7 +60,7 @@ The system accepts:
 
 The system generates a `/docs` directory containing:
 
-- PRD.md (copied or normalized)
+- prd.md (copied or normalized)
 - system.md
 - pipeline.md
 - decisions.md

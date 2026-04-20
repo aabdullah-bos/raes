@@ -1,6 +1,6 @@
 # raes-init
 
-Generate a structured, constraint-driven project plan from a single PRD.
+Generate a structured, constraint-driven project plan from a greenfield project or an existing PRD with no implementaiton.
 
 `raes-init` is the entry point to the RAES workflow — a lightweight system for building software with AI **without drift**.
 
@@ -27,7 +27,7 @@ You need **constraints + structure + controlled execution**.
 ## What it does
 
 Given:
-- a PRD (`.md`)
+- a greenfield project or a PRD (`.md`) with no implementation
 - a target project path
 - an archetype (currently `cli-doc-generator`)
 
@@ -35,11 +35,14 @@ It generates a complete RAES docs set:
 
 ```
 <target>/docs/
-├── PRD.md
+├── prd.md (if it does not exist)
 ├── system.md
 ├── pipeline.md
 ├── decisions.md
-└── prd-ux-review.md
+├── prd-ux-review.md
+├── execution-guidance.md
+├── validation.md
+└── raes.config.yaml
 ```
 
 ---
@@ -86,7 +89,7 @@ raes-init <path-to-prd> <target-project-path> cli-doc-generator
 
 ```text
 Read these files first and treat them as authoritative:
-- <project>/docs/PRD.md
+- <project>/docs/prd.md
 - <project>/docs/system.md
 - <project>/docs/pipeline.md
 - <project>/docs/decisions.md
@@ -121,17 +124,17 @@ A system for making AI behave like a disciplined engineer.
 
 ## Current scope (V1)
 
-- Single PRD input
-- Single archetype: cli-doc-generator
+- Greenfield or Single PRD input
+- Single archetype: cli-doc-generator (Using raes to build raes)
 - Create-or-fail writes
-- Docs-only output
+- Docs-only output (8 files, including `raes.config.yaml`)
 - TypeScript / Node.js runtime
 
 ---
 
 ## Try it
 
-Start with one PRD.
+Start with no PRD or one PRD.
 
 Run one slice.
 

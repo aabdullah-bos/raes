@@ -117,6 +117,37 @@ A slice is complete only when:
 5. The slice is marked complete.
 6. Work stops after the slice.
 
+### Milestone 5 — RAES Methodology Documentation
+
+- [x] Review Slice: Produce RAES Reference Document
+  - Inspect all existing repo artifacts against authoritative design inputs
+  - Identify what is captured vs. missing in the repo
+  - Produce `docs/raes-reference.md` covering: what RAES is, what it is not, two slice types, config design principle, toolchain, canonical prompt structure, human-in-the-loop position, and explicit gap list
+  - No implementation code
+
+- [ ] Review Slice: Update `RAES_template.md` and `README.md` for two-slice-type model
+  - Add Review Slice loop and completion criteria
+  - Update prompt examples to reference config-based routing
+  - Do not change raes-init implementation
+
+- [x] Review Slice: Define minimal `raes.config.yaml` schema
+  - Schema defined inline by operator and provided as authoritative input to the execution slice below
+  - Keys: project.name, sources.build_intent, sources.next_slice (path + selection_rule), sources.durable_decisions, sources.execution_guidance, sources.validation
+
+- [x] Execution Slice: Generate `raes.config.yaml` and new stub docs from raes-init
+  - Rename `PRD.md` output to `prd.md` (lowercase, matches `build_intent` schema key)
+  - Add `execution-guidance.md` stub (Invariants, Workflow Rules, Anti-Patterns, Definition of Done)
+  - Add `validation.md` stub (Testing Approach, Validation Commands, Known Constraints)
+  - Add `raes.config.yaml` with project.name and all five source keys pointing to generated files
+  - Update `decisions.md` to include a Decision Log table stub
+  - Output set grows from 5 to 8 files; create-or-fail contract is preserved
+  - All 12 tests pass; typecheck blocked by missing local `tsc` install (same constraint as prior slices)
+
+- [ ] Review Slice: Define archetype contract
+  - Specify what a RAES archetype must contain to be considered complete
+  - Specify the contract between an archetype and raes-init's generation logic
+  - Required before implementing a second archetype
+
 ---
 
 ## Handoff Notes
@@ -138,3 +169,5 @@ A slice is complete only when:
 - 2026-04-08: The shape guard is intentionally static per generated filename and does not widen the V1 contract or change the create-or-fail output behavior.
 - 2026-04-08: Slice 5 makes `prd-ux-review.md` derive CLI-oriented UX risks from PRD workflow bullets so the review calls out path errors, validation blocks, existing-doc conflicts, and archetype expectations when those failure moments are present.
 - 2026-04-08: The UX-risk extraction remains deterministic and narrow: it only inspects the already-supported PRD sections and falls back to generic review bullets when the PRD does not expose clear workflow risks.
+- 2026-04-20: Review Slice — RAES Reference Document completed. `docs/raes-reference.md` produced. Key findings: `raes.config.yaml` does not exist in this repo; the Review Slice type is not formalized in any existing repo artifact; `raes-discover` and `raes-execute` tools exist only in design conversations; existing prompt examples use hardcoded paths and conflict with the evolved config-routed design. Six explicit gaps recorded in Section 8 of the reference document. Next recommended: Update template and README for two-slice model, then define `raes.config.yaml` schema.
+- 2026-04-19: Execution Slice — raes-init now generates 8 files per init: `prd.md` (renamed from `PRD.md`; verbatim source PRD copy), `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md` (new stub), `validation.md` (new stub), `raes.config.yaml` (new; maps all five source keys to generated paths). All 12 tests pass. Typecheck blocked: `tsc` not installed locally (same constraint as prior slices). Naming conflict resolved: `PRD.md` → `prd.md` to match schema `build_intent` key. `system.md` and `prd-ux-review.md` continue to be generated as additional outputs not referenced in `raes.config.yaml`. Next recommended: Review Slice — Update `RAES_template.md` and `README.md` for two-slice-type model.

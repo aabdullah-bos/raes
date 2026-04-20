@@ -69,3 +69,11 @@
 - Neither is referenced by a key in `raes.config.yaml` V1.
 - `system.md` contains PRD-derived project system rules; `prd-ux-review.md` contains CLI-oriented UX risk review.
 - Future slices may add config keys for these if a consuming tool requires them.
+
+### 2026-04-20 — `prd-ux-review.md` is a bootstrap artifact, not a living loop document
+
+- `prd-ux-review.md` is generated at init time to surface UX ambiguity from the PRD before execution begins.
+- It is intentionally absent from `raes.config.yaml` — the execution loop does not consume it.
+- Its findings should flow into `execution-guidance.md` (as UX constraints) and `decisions.md` (as decided UX patterns) before the first execution slice runs. Once that transfer is done, `prd-ux-review.md` has served its purpose.
+- For CLI/tooling archetypes, UX concerns belong as a `## Operator Experience Rules` subsection of `execution-guidance.md` rather than as a standalone document in the loop. Example constraints for this archetype: every error message must tell the operator what to do next; help text must describe all supported invocation modes.
+- For product archetypes (frontend apps, AI experiences with real end-user UX), a dedicated `ux-constraints.md` config key is warranted — that decision is deferred to when the first product archetype is designed.

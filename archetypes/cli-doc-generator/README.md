@@ -42,7 +42,28 @@ These templates serve two purposes:
 | `validation.md` | `validation` | Testing approach and validation commands |
 | `raes.config.yaml` | — | Source routing config pointing to all of the above |
 
-`system.md` and `prd-ux-review.md` are not referenced in `raes.config.yaml` because they are consumed during Review Slices by the operator, not by the automated execution loop.
+`system.md` is not referenced in `raes.config.yaml` because it is consumed during Review Slices by the operator, not by the automated execution loop.
+
+`prd-ux-review.md` is not referenced in `raes.config.yaml` because it is a **bootstrap artifact**, not a living loop document. It surfaces UX ambiguity from the PRD at init time. Once the operator transfers its findings into `execution-guidance.md` (as UX constraints) and `decisions.md` (as decided UX patterns), it has served its purpose. See "UX concerns for CLI archetypes" below.
+
+---
+
+## UX concerns for CLI archetypes
+
+For CLI/tooling archetypes, UX concerns are narrow and well-defined: help text clarity, error message quality, option naming, and failure behavior. These do not warrant a standalone document in the execution loop.
+
+The right home for CLI UX constraints is a `## Operator Experience Rules` subsection inside `execution-guidance.md`. Example rules for a CLI doc generator:
+
+- Every error message must tell the operator what to do next, not just what went wrong.
+- Help text must describe all supported invocation modes.
+- Failure must happen before any file I/O — never leave partial output on disk.
+- The CLI must not silently ignore unrecognized arguments.
+
+**How `prd-ux-review.md` feeds this:**
+
+After init, review `prd-ux-review.md` and transfer any UX findings that should constrain execution into `execution-guidance.md` under `## Operator Experience Rules`. Record any UX decisions that must persist across slices in `decisions.md`. Once that transfer is complete, `prd-ux-review.md` is done — it is not a document the loop re-reads.
+
+**For product archetypes:** a dedicated `ux-constraints.md` config key is warranted when the archetype has real end-user UX (user flows, transitions, affordances, timing). That decision is deferred to when the first product archetype is designed.
 
 ---
 

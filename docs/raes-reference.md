@@ -109,7 +109,7 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 **What does NOT belong in config:** the content of those artifacts. When new constraints emerge during execution, they are recorded in the project's existing truth artifacts — `pipeline.md` for slice progression and workflow guidance, `decisions.md` for durable choices that future slices must respect, `system.md` when the project has a stable project-wide rules document. RAES picks those constraints up on the next pass. This keeps config thin and prevents it from becoming a second documentation system.
 
-**Config schema (not yet formalized — see Section 8, Gap 1).**
+**Config schema:** defined and implemented in `projects/raes-init/src/generate-docs.ts`. See `projects/raes-init/docs/raes.config.yaml` for a live example.
 
 ---
 
@@ -119,7 +119,12 @@ RAES has three tools. Each targets a different starting condition.
 
 ### `raes-init`
 
-Initializes a greenfield project. Accepts a PRD file path plus an archetype identifier and generates the full RAES docs set (`PRD.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`) under the target project's `/docs` directory. Write behavior is create-or-fail: no overwrite, no merge.
+Initializes a greenfield project. Supports two modes:
+
+- **Bare greenfield** (`raes-init <target-path> <archetype>`) — generates stub docs with section structure and no content.
+- **PRD-seeded** (`raes-init --from-prd <prd-path> <target-path> <archetype>`) — generates docs adapted from an existing PRD file.
+
+Both modes produce the same eight-file output set in `<target>/docs/`: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, and `raes.config.yaml`. Write behavior is create-or-fail: no overwrite, no merge.
 
 Current status: V1 implemented in TypeScript. Supports the `cli-doc-generator` archetype. Located at `projects/raes-init/`.
 
@@ -254,7 +259,34 @@ This position is a deliberate design choice, not a limitation. Software developm
 
 ---
 
-## 8. Open Questions and Flagged Gaps
+## 8. UX Concern Scoping
+
+UX concerns in RAES are not uniform — how they are handled depends on the archetype.
+
+### The role of `prd-ux-review.md`
+
+`prd-ux-review.md` is a **bootstrap artifact**. It is generated at init time to surface UX ambiguity from the PRD before the first execution slice runs. It is intentionally absent from `raes.config.yaml` — the execution loop does not consume it.
+
+Its purpose is transfer, not persistence: the operator reviews it once, moves relevant findings into `execution-guidance.md` (as UX constraints the loop enforces) and `decisions.md` (as decided UX patterns), then it is done. It is not a document that accumulates over time.
+
+### CLI and tooling archetypes
+
+For CLI/tooling archetypes, UX concerns are narrow: help text, error messages, option naming, failure behavior. These belong as a `## Operator Experience Rules` subsection inside `execution-guidance.md` — not as a standalone document in the loop. The surface is small enough that a dedicated document creates overhead without adding resolution.
+
+Example constraints for a CLI archetype:
+- Every error message must tell the operator what to do next
+- Help text must describe all supported invocation modes
+- Failure must occur before any file I/O — never leave partial output on disk
+
+### Product archetypes
+
+For product archetypes with real end-user UX (frontend apps, AI experiences), UX concerns are first-class execution constraints: user flows, affordances, failure states, transitions, and timing all affect whether a slice is correct. These warrant a dedicated `ux-constraints.md` as a config key, loaded by the execution loop alongside `execution-guidance.md`.
+
+That design is deferred to when the first product archetype is implemented.
+
+---
+
+## 9. Open Questions and Flagged Gaps
 
 The following items are not yet decided or are inconsistent across existing artifacts. Each represents work that must happen before the affected part of RAES can be considered stable.
 

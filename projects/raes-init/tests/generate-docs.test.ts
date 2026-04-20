@@ -47,14 +47,17 @@ test('generates the RAES docs set for the narrow happy path', async () => {
 
   const docsDir = join(targetProject, 'docs');
   assert.deepEqual(generated, [
-    join(docsDir, 'PRD.md'),
+    join(docsDir, 'prd.md'),
     join(docsDir, 'system.md'),
     join(docsDir, 'pipeline.md'),
     join(docsDir, 'decisions.md'),
-    join(docsDir, 'prd-ux-review.md')
+    join(docsDir, 'prd-ux-review.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md'),
+    join(docsDir, 'raes.config.yaml')
   ]);
 
-  const prdText = await readFile(join(docsDir, 'PRD.md'), 'utf8');
+  const prdText = await readFile(join(docsDir, 'prd.md'), 'utf8');
   assert.equal(prdText, await readFile(sourcePrd, 'utf8'));
 
   const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
@@ -235,6 +238,89 @@ test('fails clearly when a generated doc shape omits required sections', () => {
         'generated pipeline.md is missing required sections: ## Invariants, ## Known Contracts'
     }
   );
+});
+
+test('generates raes.config.yaml with required source keys pointing to correct paths', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'config-check-tool');
+
+  await writeFile(sourcePrd, '# Config Check Tool\n', 'utf8');
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
+  assert.match(configText, /name: config-check-tool/);
+  assert.match(configText, /build_intent: docs\/prd\.md/);
+  assert.match(configText, /path: docs\/pipeline\.md/);
+  assert.match(configText, /selection_rule: first_unchecked_slice/);
+  assert.match(configText, /durable_decisions: docs\/decisions\.md/);
+  assert.match(configText, /execution_guidance: docs\/execution-guidance\.md/);
+  assert.match(configText, /validation: docs\/validation\.md/);
+});
+
+test('generates execution-guidance.md with required sections', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'guidance-check-tool');
+
+  await writeFile(sourcePrd, '# Guidance Check Tool\n', 'utf8');
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const guidanceText = await readFile(join(targetProject, 'docs', 'execution-guidance.md'), 'utf8');
+  assert.match(guidanceText, /# guidance-check-tool/);
+  assert.match(guidanceText, /## Invariants/);
+  assert.match(guidanceText, /## Workflow Rules/);
+  assert.match(guidanceText, /## Anti-Patterns/);
+  assert.match(guidanceText, /## Definition of Done/);
+});
+
+test('generates validation.md with required sections', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'validation-check-tool');
+
+  await writeFile(sourcePrd, '# Validation Check Tool\n', 'utf8');
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const validationText = await readFile(join(targetProject, 'docs', 'validation.md'), 'utf8');
+  assert.match(validationText, /# validation-check-tool/);
+  assert.match(validationText, /## Testing Approach/);
+  assert.match(validationText, /## Validation Commands/);
+  assert.match(validationText, /## Known Constraints/);
+});
+
+test('generates decisions.md with a Decision Log table stub', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'decisions-check-tool');
+
+  await writeFile(sourcePrd, '# Decisions Check Tool\n', 'utf8');
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const decisionsText = await readFile(join(targetProject, 'docs', 'decisions.md'), 'utf8');
+  assert.match(decisionsText, /\| Decision \|/);
+  assert.match(decisionsText, /\| Rationale \|/);
+  assert.match(decisionsText, /\| Date \|/);
 });
 
 test('derives CLI-oriented UX risks and open questions from PRD workflow failure moments', async () => {

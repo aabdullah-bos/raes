@@ -4,15 +4,18 @@ import { basename, join } from 'node:path';
 export const SUPPORTED_ARCHETYPE = 'cli-doc-generator';
 
 const REQUIRED_DOC_NAMES = [
-  'PRD.md',
+  'prd.md',
   'system.md',
   'pipeline.md',
   'decisions.md',
-  'prd-ux-review.md'
+  'prd-ux-review.md',
+  'execution-guidance.md',
+  'validation.md',
+  'raes.config.yaml'
 ] as const;
 
 const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
-  'PRD.md': [],
+  'prd.md': [],
   'system.md': [
     '## Purpose',
     '## Product Invariants',
@@ -31,7 +34,15 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
     '## Handoff Notes'
   ],
   'decisions.md': ['## Durable Decisions'],
-  'prd-ux-review.md': ['## Purpose', '## Observed Requirements', '## UX Risks', '## Open Questions']
+  'prd-ux-review.md': ['## Purpose', '## Observed Requirements', '## UX Risks', '## Open Questions'],
+  'execution-guidance.md': [
+    '## Invariants',
+    '## Workflow Rules',
+    '## Anti-Patterns',
+    '## Definition of Done'
+  ],
+  'validation.md': ['## Testing Approach', '## Validation Commands', '## Known Constraints'],
+  'raes.config.yaml': []
 };
 
 export class GenerationError extends Error {}
@@ -83,11 +94,14 @@ export async function generateDocs({
   const prdSections = extractPrdSections(prdText);
 
   const generatedContent = new Map<string, string>([
-    ['PRD.md', prdText],
+    ['prd.md', prdText],
     ['system.md', renderSystemDoc(projectName, prdTitle, prdBullets, prdSections)],
     ['pipeline.md', renderPipelineDoc(projectName, prdTitle, prdBullets, prdSections)],
     ['decisions.md', renderDecisionsDoc(projectName)],
-    ['prd-ux-review.md', renderPrdUxReview(projectName, prdTitle, prdBullets, prdSections)]
+    ['prd-ux-review.md', renderPrdUxReview(projectName, prdTitle, prdBullets, prdSections)],
+    ['execution-guidance.md', renderExecutionGuidanceDoc(projectName)],
+    ['validation.md', renderValidationDoc(projectName)],
+    ['raes.config.yaml', renderRaesConfig(projectName)]
   ]);
 
   for (const outputPath of outputPaths) {
@@ -329,7 +343,60 @@ function renderPipelineDoc(
 }
 
 function renderDecisionsDoc(projectName: string): string {
-  return [`# ${projectName} — decisions.md`, '', '## Durable Decisions', ''].join('\n');
+  return [
+    `# ${projectName} — decisions.md`,
+    '',
+    '## Durable Decisions',
+    '',
+    '| Decision | Rationale | Date |',
+    '|---|---|---|',
+    ''
+  ].join('\n');
+}
+
+function renderExecutionGuidanceDoc(projectName: string): string {
+  return [
+    `# ${projectName} — execution-guidance.md`,
+    '',
+    '## Invariants',
+    '',
+    '## Workflow Rules',
+    '',
+    '## Anti-Patterns',
+    '',
+    '## Definition of Done',
+    ''
+  ].join('\n');
+}
+
+function renderValidationDoc(projectName: string): string {
+  return [
+    `# ${projectName} — validation.md`,
+    '',
+    '## Testing Approach',
+    '',
+    '## Validation Commands',
+    '',
+    '## Known Constraints',
+    ''
+  ].join('\n');
+}
+
+function renderRaesConfig(projectName: string): string {
+  return [
+    `project:`,
+    `  name: ${projectName}`,
+    ``,
+    `sources:`,
+    `  build_intent: docs/prd.md`,
+    `  next_slice:`,
+    `    path: docs/pipeline.md`,
+    `    selection_rule: first_unchecked_slice`,
+    `  durable_decisions: docs/decisions.md`,
+    `  execution_guidance: docs/execution-guidance.md`,
+    `  validation: docs/validation.md`,
+    ``
+  ].join('\n');
 }
 
 function renderPrdUxReview(

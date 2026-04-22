@@ -152,10 +152,12 @@ The prompt structure separates three concerns:
 
 This structure is platform-agnostic — it does not assume a specific agent runtime.
 
-### Execution Slice Prompt (canonical form)
+### Default Prompt (canonical form)
+
+A single prompt handles both slice types. The agent identifies the slice type from the pipeline and applies the appropriate rules.
 
 ```
-Read `docs/raes.config.yaml` first and use it to locate the authoritative 
+Read `docs/raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
 - next slice
@@ -163,79 +165,58 @@ project artifacts for:
 - durable decisions
 - validation guidance
 
-Then inspect the repository and execute the next slice using the RAES core loop:
-PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+Read the first unchecked slice in the configured backlog. Identify its type:
+Execution Slice or Review Slice. Apply the rules for that type only.
 
-Execution rules:
+---
+
+EXECUTION SLICE — loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+
+Rules:
 - execute one slice only
 - use the configured next-slice source as the source of truth for what to do next
-- use the configured execution-guidance sources as the source of truth for 
+- use the configured execution-guidance source as the source of truth for
   constraints, anti-patterns, workflow rules, and definition of done
-- use the configured durable-decisions source as the source of truth for 
+- use the configured durable-decisions source as the source of truth for
   decisions that must persist across slices
-- do not redesign the milestone or restate the overall plan unless required 
+- do not redesign the milestone or restate the overall plan unless required
   for execution
 - write failing tests first
 - implement the minimum code required to make those tests pass
-- run relevant tests and typecheck using the project's existing tooling and 
+- run relevant tests and typecheck using the project's existing tooling and
   the configured validation guidance
 - append handoff notes to the configured pipeline file
-- append durable implementation decisions to the configured decisions file 
+- append durable implementation decisions to the configured decisions file
   only when needed
+
+Expected output: Current slice | Sources used | Repo inspection | Plan |
+Tests added/updated | Implementation changes | Commands run | Result |
+Flags | Next recommended slice
+
+---
+
+REVIEW SLICE — loop: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
+
+Rules:
+- inspect authoritative artifacts before writing anything
+- compare current state to build intent
+- identify concrete gaps explicitly — do not paper over them
+- do not duplicate what already exists — reference it
+- no implementation code
+- update pipeline with this slice marked complete and next slice recommended
+
+Expected output: Current slice | Artifacts inspected | Findings | Gaps (explicit) |
+Output artifact(s) produced | Flags | Next recommended slice
+
+---
+
+In either case:
+- if required guidance is missing, conflicting, or ambiguous, flag it explicitly
+  before proceeding
 - stop immediately after completing the slice
-- if required guidance is missing, conflicting, or ambiguous, flag it 
-  explicitly before proceeding
-
-Expected output format:
-- Current slice
-- Sources used
-- Repo inspection
-- Plan
-- Tests added/updated
-- Implementation changes
-- Commands run
-- Result
-- Flags
-- Next recommended slice
-
-Start with the first unchecked slice in the configured backlog and stop 
-after that slice is complete.
 ```
 
-### Review Slice Prompt (canonical form)
-
-```
-Read `docs/raes.config.yaml` first and use it to locate the authoritative 
-project artifacts for:
-- build intent
-- next slice
-- execution guidance
-- durable decisions
-- validation guidance
-
-If `docs/raes.config.yaml` does not exist, inspect the repository for 
-candidate artifacts and treat what you find as the available truth.
-
-This is a REVIEW SLICE. Do not write implementation code. Do not write 
-failing tests.
-
-Review Slice rules:
-- Inspect existing repo artifacts before writing anything
-- Identify what is already captured vs. what is missing
-- Do not duplicate what already exists — reference it
-- Synthesize the gaps into the output artifact
-- If required guidance is missing, conflicting, or ambiguous, flag it 
-  explicitly before proceeding
-
-Completion criteria:
-- Output artifact exists and is coherent
-- It does not contradict existing durable decisions
-- Gaps and inconsistencies are explicitly listed
-- Pipeline is updated with this slice marked complete and next slice recommended
-- No implementation code was written
-```
-
-**Note on prompt evolution:** Existing prompt examples in `README.md` and `RAES_template.md` Section 6 use hardcoded document paths rather than config-based routing. These are earlier-generation prompts. The canonical forms above supersede them for projects that have a `raes.config.yaml`. For projects without one, fall back to the repo inspection pattern shown in the Review Slice prompt.
+**Note on prompt evolution:** Existing prompt examples in `README.md` and `RAES_template.md` Section 6 use hardcoded document paths rather than config-based routing. These are earlier-generation prompts. The canonical form above supersedes them for projects that have a `raes.config.yaml`. For projects without one, inspect the repository for candidate artifacts and treat what you find as the available truth.
 
 ---
 

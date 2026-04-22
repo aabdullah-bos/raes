@@ -9,10 +9,10 @@ sources:
   build_init: docs/prd.md
 
   next_slice:
-    path: docs/pipline.md
+    path: docs/pipeline.md
     selection_rule: first_unchecked_slice
 
-  durable_decisions: docs/decsions.md
+  durable_decisions: docs/decisions.md
 
   execution_guidance: docs/system.md
 

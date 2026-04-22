@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { generateDocs, GenerationError } from './generate-docs.ts';
+import { loadProvider, ProviderError } from './provider.ts';
 import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -54,6 +55,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     console.error('usage: raes-init <target-project-path> <archetype>');
     console.error('       raes-init --from-prd <prd-path> <target-project-path> <archetype>');
     return 1;
+  }
+
+  if (isFromPrd) {
+    try {
+      loadProvider();
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        console.error(error.message);
+        return 1;
+      }
+      throw error;
+    }
   }
 
   try {

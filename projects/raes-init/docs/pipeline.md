@@ -30,20 +30,28 @@ The backlog stays intentionally narrow until the end-to-end happy path is proven
 
 ## Known Contracts
 
-- Input mode for V1 happy path: one readable PRD markdown file path
+- Input mode for happy path: one readable PRD markdown file path
 - Target location: one target project path with docs written to `<target>/docs/`
-- Supported archetype for the initial slice: `cli-doc-generator`
+- Supported archetype: `cli-doc-generator`
 - Required generated files:
-  - `PRD.md`
+  - `prd.md`
   - `system.md`
   - `pipeline.md`
   - `decisions.md`
   - `prd-ux-review.md`
+  - `execution-guidance.md`
+  - `validation.md`
+  - `raes.config.yaml`
 - Write behavior:
   - create missing docs directory
   - create required files if absent
   - fail before writing if any required target file already exists
-- V1 runtime and test toolchain are TypeScript on Node.js.
+- Runtime and test toolchain: TypeScript on Node.js
+- Provider config lives in environment variables — never in `raes.config.yaml`
+- Three supported providers: `anthropic`, `openai`, `local` (OpenAI-compatible endpoint)
+- Required env vars: `RAES_PROVIDER`; per-provider: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `RAES_LOCAL_ENDPOINT`
+- Optional: `RAES_MODEL` overrides the provider default model
+- Minimum provider operation: `complete(prompt: string): Promise<string>`
 
 ---
 
@@ -151,6 +159,19 @@ A slice is complete only when:
   - 4 new tests added for bare greenfield mode; 1 existing CLI test updated for new signature
   - All 16 tests pass; typecheck clean
 
+### Milestone 7 — Inference Provider Interface
+
+- [x] Execution Slice: Implement provider interface for `raes-init --from-prd`
+  - Define `complete(prompt: string): Promise<string>` interface
+  - Implement for `anthropic`, `openai`, and `local` (OpenAI-compatible) providers
+  - `raes-init --from-prd` fails fast with a clear error before any file I/O if `RAES_PROVIDER` is unset or unsupported
+  - Each provider fails fast if its required credential or endpoint is missing
+  - `RAES_MODEL` override applies when set; each provider has a documented default
+  - At least the `anthropic` provider is covered by a mock/stub test
+  - Fail-fast behavior for missing `RAES_PROVIDER` is tested
+  - Bare greenfield mode and existing `--from-prd` string-parsing output are unaffected
+  - All 16 existing tests continue to pass
+
 ---
 
 ## Handoff Notes
@@ -177,3 +198,4 @@ A slice is complete only when:
 - 2026-04-20: Review Slices — `README.md` updated for two-slice-type model (Execution Slice and Review Slice), "What RAES Produces" updated to 8 files with `raes.config.yaml` explained, Example Execution Prompt replaced with config-routed form. `archetypes/cli-doc-generator/README.md` added documenting template-to-output contract. `docs/raes-reference.md` Gaps 1, 4, 5, 6 marked resolved.
 - 2026-04-20: Review Slice — `docs/prd.md` updated to align with current V1 decisions. Corrected: input contract (file path only, PRD optional, `cli-doc-generator` only), output set (8 files, not 5), initialization modes (bare greenfield + `--from-prd` documented), generation logic section (clarified archetype templates are not consumed), open questions (removed answered question re: PRD optionality). No implementation changes.
 - 2026-04-20: Execution Slice — raes-init now supports two initialization modes. CLI: `raes-init <target-path> <archetype>` (bare greenfield) and `raes-init --from-prd <prd-path> <target-path> <archetype>` (PRD-seeded). `prdPath` is optional in `GenerateDocsInput`; bare greenfield uses `renderPrdStub()` which produces a `prd.md` with section headers (Overview, Goals, Non-Goals, Constraints, Open Questions) and no content; PRD parsing falls back to generic defaults when stub sections are empty. All 16 tests pass; typecheck clean. Next recommended: Review Slice — Assess `raes-init --from-prd` for AI-inference enhancement (requires provider interface design).
+- 2026-04-22: Execution Slice — Provider interface implemented in `src/provider.ts`. Defines `Provider` type (`complete(prompt): Promise<string>`) and `ProviderError`. `loadProvider()` reads `RAES_PROVIDER` env var and returns an `anthropic`, `openai`, or `local` provider; fails fast with `ProviderError` if unset, unsupported, or missing required credentials/endpoint. `RAES_MODEL` override supported; defaults: anthropic=`claude-haiku-4-5-20251001`, openai=`gpt-4o-mini`, local=`llama3`. `cli.ts` calls `loadProvider()` before `generateDocs()` when `--from-prd` is active — fails fast before any file I/O on provider misconfiguration. Doc generation logic (string-parsing) is unchanged; provider is wired but not yet used for generation. 8 new tests added (24 total); all pass; typecheck clean. Next recommended: Execution Slice — Wire provider into `--from-prd` generation (replace string-parsing with AI-backed doc derivation).

@@ -1,4 +1,4 @@
-# RAES Init — PRD (v1)
+# RAES Init — PRD
 
 ## Purpose
 
@@ -59,12 +59,12 @@ Generates docs adapted from the source PRD. The PRD is copied verbatim to
 
 ---
 
-### 2. Input Contract (V1)
+### 2. Input Contract
 
-- PRD input must be a readable file path — inline text is not supported in V1
+- PRD input must be a readable file path — inline text is not supported
 - Target output is one project-local `docs/` directory
-- Archetype must be explicitly specified — auto-detection is not supported in V1
-- Supported archetype in V1: `cli-doc-generator`
+- Archetype must be explicitly specified — auto-detection is not supported
+- Supported archetype: `cli-doc-generator`
 
 ---
 
@@ -96,9 +96,9 @@ fabricate content not present in the PRD.
 
 ---
 
-### 5. Generation Logic (V1)
+### 5. Generation Logic (string-parsing)
 
-PRD adaptation uses section-aware string parsing — not AI inference in V1:
+PRD adaptation uses section-aware string parsing:
 
 - Title: first `# ` heading in the PRD
 - Bullets: extracted from `## Core Functionality`, `## Constraints`, `## Open Questions` sections
@@ -106,16 +106,50 @@ PRD adaptation uses section-aware string parsing — not AI inference in V1:
 
 `system.md` and `prd-ux-review.md` generation adapts PRD content to RAES section shapes.
 `pipeline.md` uses PRD-derived content for Known Contracts and Unknowns.
-`execution-guidance.md` and `validation.md` are stubs in V1 regardless of initialization mode.
+`execution-guidance.md` and `validation.md` are stubs regardless of initialization mode.
 
 Archetype templates (in `archetypes/`) are reference documents for humans and brownfield
-discovery. They are not consumed by the generation logic in V1.
+discovery. They are not consumed by the generation logic.
 
 ---
 
-## Non-Goals (v1)
+### 6. Inference Provider Interface
 
-- No AI inference calls during generation (deferred to a future slice behind a provider interface)
+`raes-init --from-prd` and future commands call inference via a provider abstraction.
+The provider is selected at runtime via environment variables — never via `raes.config.yaml`,
+which must remain portable and committable.
+
+**Environment contract:**
+
+```bash
+# Required
+RAES_PROVIDER=anthropic | openai | local
+
+# Required per provider
+ANTHROPIC_API_KEY=...           # if RAES_PROVIDER=anthropic
+OPENAI_API_KEY=...              # if RAES_PROVIDER=openai
+RAES_LOCAL_ENDPOINT=http://...  # if RAES_PROVIDER=local (Ollama default: http://localhost:11434/v1)
+
+# Optional — overrides provider default model
+RAES_MODEL=...
+```
+
+**Minimum required operation:**
+
+```typescript
+complete(prompt: string): Promise<string>
+```
+
+`complete_with_tools` and `embed` are out of scope for this version.
+
+If `RAES_PROVIDER` is absent or invalid, `raes-init --from-prd` must fail fast with a
+clear error before any file I/O. The `local` provider covers Ollama and LM Studio —
+both expose OpenAI-compatible APIs.
+
+---
+
+## Non-Goals
+
 - No code generation
 - No repo scaffolding beyond docs
 - No automatic UI/backend setup
@@ -133,6 +167,11 @@ discovery. They are not consumed by the generation logic in V1.
 - System definition captures real constraints without overreach
 - Operator is not blocked by missing structure
 - Config (`raes.config.yaml`) correctly routes the loop to all generated sources
+- `raes-init --from-prd` fails fast with a clear error before any file I/O if `RAES_PROVIDER` is unset or unsupported
+- Each provider fails fast with a clear error if its required credential or endpoint is missing
+- `complete(prompt)` is implemented and tested for all three providers (`anthropic`, `openai`, `local`)
+- `RAES_MODEL` override applies when set; each provider has a documented default when it is not
+- Bare greenfield mode and existing `--from-prd` string-parsing output are unaffected by provider interface addition
 
 ---
 
@@ -151,13 +190,12 @@ discovery. They are not consumed by the generation logic in V1.
 - How opinionated should archetypes be?
 - Should the tool ask follow-up questions in a future version?
 - How should examples influence generation?
-- What is the right provider interface for adding AI inference to `--from-prd`?
 
 ---
 
-## Future Extensions (Not v1)
+## Future Extensions
 
-- AI-inference-backed `--from-prd` (generates real slice backlog, extracted decisions, derived execution guidance)
+- AI-inference-backed `--from-prd` generation (real slice backlog, extracted decisions, derived execution guidance using the provider interface)
 - Interactive init (guided questions)
 - Archetype auto-detection from PRD
 - Second archetype beyond `cli-doc-generator`

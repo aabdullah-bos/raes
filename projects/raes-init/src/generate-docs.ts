@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
-export const SUPPORTED_ARCHETYPE = 'cli-doc-generator';
+export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app'] as const;
+export type SupportedArchetype = (typeof SUPPORTED_ARCHETYPES)[number];
 
 const REQUIRED_DOC_NAMES = [
   'prd.md',
@@ -70,11 +71,13 @@ export async function generateDocs({
     validateRequiredInput('prd path', prdPath);
   }
 
-  if (archetype !== SUPPORTED_ARCHETYPE) {
+  if (!SUPPORTED_ARCHETYPES.includes(archetype as SupportedArchetype)) {
     throw new GenerationError(
-      `unsupported archetype: ${archetype} (supported: ${SUPPORTED_ARCHETYPE})`
+      `unsupported archetype: ${archetype} (supported: ${SUPPORTED_ARCHETYPES.join(', ')})`
     );
   }
+
+  const resolvedArchetype = archetype as SupportedArchetype;
 
   const docsDirectory = join(targetProjectPath, 'docs');
   const outputPaths = REQUIRED_DOC_NAMES.map((name) => join(docsDirectory, name));
@@ -102,10 +105,10 @@ export async function generateDocs({
 
   const generatedContent = new Map<string, string>([
     ['prd.md', prdText],
-    ['system.md', renderSystemDoc(projectName, prdTitle, prdBullets, prdSections)],
-    ['pipeline.md', renderPipelineDoc(projectName, prdTitle, prdBullets, prdSections)],
+    ['system.md', renderSystemDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
+    ['pipeline.md', renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
     ['decisions.md', renderDecisionsDoc(projectName)],
-    ['prd-ux-review.md', renderPrdUxReview(projectName, prdTitle, prdBullets, prdSections)],
+    ['prd-ux-review.md', renderPrdUxReview(resolvedArchetype, projectName, prdTitle, prdSections)],
     ['execution-guidance.md', renderExecutionGuidanceDoc(projectName)],
     ['validation.md', renderValidationDoc(projectName)],
     ['raes.config.yaml', renderRaesConfig(projectName)]
@@ -244,9 +247,20 @@ function renderPrdStub(projectName: string): string {
 }
 
 function renderSystemDoc(
+  archetype: SupportedArchetype,
   projectName: string,
   prdTitle: string,
-  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  if (archetype === 'frontend-backend-ai-app') {
+    return renderSystemDocFrontendBackendAiApp(projectName, prdTitle, prdSections);
+  }
+  return renderSystemDocCliDocGenerator(projectName, prdTitle, prdSections);
+}
+
+function renderSystemDocCliDocGenerator(
+  projectName: string,
+  prdTitle: string,
   prdSections: PrdSections
 ): string {
   const productInvariants = renderBullets(prdSections.constraints, [
@@ -256,11 +270,11 @@ function renderSystemDoc(
   const knownContracts = renderBullets(prdSections.coreFunctionality, [
     'Input mode: one readable PRD markdown file path.',
     'Target location: `<target>/docs/`.',
-    `Supported archetype: \`${SUPPORTED_ARCHETYPE}\`.`,
-    'Generated files: `PRD.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md`.'
+    `Supported archetypes: \`${SUPPORTED_ARCHETYPES.join('`, `')}\`.`,
+    'Generated files: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md`.'
   ]);
   const unknowns = renderBullets(prdSections.openQuestions, [
-    'How much PRD normalization should be applied beyond copying `PRD.md`.',
+    'How much PRD normalization should be applied beyond copying `prd.md`.',
     'How future archetypes should adapt the output set.',
     'What validation is needed beyond the narrow happy path.'
   ]);
@@ -272,7 +286,7 @@ function renderSystemDoc(
     '',
     `This document defines the V1 execution rules for \`${projectName}\`.`,
     '',
-    `The project is initialized from the PRD \`${prdTitle}\` using the \`${SUPPORTED_ARCHETYPE}\` archetype.`,
+    `The project is initialized from the PRD \`${prdTitle}\` using the \`cli-doc-generator\` archetype.`,
     '',
     '## Product Invariants',
     '',
@@ -307,10 +321,96 @@ function renderSystemDoc(
   ].join('\n');
 }
 
-function renderPipelineDoc(
+function renderSystemDocFrontendBackendAiApp(
   projectName: string,
   prdTitle: string,
-  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  const productInvariants = renderBullets(prdSections.constraints, [
+    'The core user flow described in the PRD must remain intact unless explicitly changed.',
+    'The frontend experience should remain understandable even when AI behavior is variable.',
+    'AI behavior should support the product flow, not replace the product flow.',
+    'The user should receive a legible response even when AI output is delayed, partial, or fails.'
+  ]);
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
+    'Frontend ↔ backend boundary should be explicit.',
+    'AI platform interaction should occur through a backend route, service, or adapter layer.',
+    'Request and response shapes used by the frontend should be stable once introduced.',
+    'Error states visible to the user should have predictable shapes and messages.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'Exact provider or model selection.',
+    'Prompt structure and prompt ownership.',
+    'Streaming vs non-streaming response behavior.',
+    'Latency handling and loading states.',
+    'Fallback behavior when AI output is invalid or empty.',
+    'Conversation or session memory behavior.'
+  ]);
+
+  return [
+    `# ${projectName} — system.md`,
+    '',
+    '## Purpose',
+    '',
+    `This document defines the execution rules for \`${projectName}\`.`,
+    '',
+    `The project is initialized from the PRD \`${prdTitle}\` using the \`frontend-backend-ai-app\` archetype.`,
+    '',
+    '## Product Invariants',
+    '',
+    productInvariants,
+    '',
+    '## Drift Guards',
+    '',
+    '- Shared types are the source of truth for data exchanged across boundaries.',
+    '- Do not couple frontend components directly to provider-specific AI payloads.',
+    '- Do not rename or reshape known request/response contracts without explicit decision.',
+    '- Mock or stub AI behavior in tests unless the slice explicitly concerns live integration.',
+    '- One slice per session. Stop after completing the slice.',
+    '',
+    '## Known Contracts',
+    '',
+    knownContracts,
+    '',
+    '## Unknowns',
+    '',
+    unknowns,
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Do not put provider-specific response logic directly into UI components.',
+    '- Do not make live AI calls part of default deterministic test runs.',
+    '- Do not introduce multiple AI providers without an explicit decision.',
+    '- Do not blur temporary scaffolding and durable contracts.',
+    '- Do not let prompt structure become the only place where product logic lives.',
+    '',
+    '## Definition of Done',
+    '',
+    '1. The exact slice was named explicitly.',
+    '2. Failing tests were written or updated first.',
+    '3. The minimum implementation required for the slice was completed.',
+    '4. Relevant tests and typecheck passed.',
+    '5. Known contracts remain aligned.',
+    '6. Any durable decision was recorded in `decisions.md`.',
+    ''
+  ].join('\n');
+}
+
+function renderPipelineDoc(
+  archetype: SupportedArchetype,
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  if (archetype === 'frontend-backend-ai-app') {
+    return renderPipelineDocFrontendBackendAiApp(projectName, prdTitle, prdSections);
+  }
+  return renderPipelineDocCliDocGenerator(projectName, prdTitle, prdSections);
+}
+
+function renderPipelineDocCliDocGenerator(
+  projectName: string,
+  prdTitle: string,
   prdSections: PrdSections
 ): string {
   const knownContracts = renderBullets(prdSections.coreFunctionality, [
@@ -360,6 +460,78 @@ function renderPipelineDoc(
     '### Milestone 2 — Validation',
     '',
     '- [ ] Slice 2: Add explicit error messages for invalid inputs and target conflicts.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+}
+
+function renderPipelineDocFrontendBackendAiApp(
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
+    'Frontend ↔ backend boundary must be explicit.',
+    'AI interaction occurs through a backend adapter layer.',
+    'Request and response shapes are stable once introduced.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'Model and provider selection.',
+    'Streaming vs non-streaming response behavior.',
+    'Retry and fallback behavior.',
+    'UX around loading, partial output, and failure states.'
+  ]);
+
+  return [
+    `# ${projectName} — pipeline.md`,
+    '',
+    '## Purpose',
+    '',
+    `This pipeline defines the execution path for \`${projectName}\` based on the PRD \`${prdTitle}\`.`,
+    '',
+    '## Invariants',
+    '',
+    '### Product Invariants',
+    '',
+    '- The core user flow must remain intact unless explicitly changed.',
+    '- The frontend should remain legible even when AI behavior is variable.',
+    '- AI interaction should support the product loop rather than redefine it.',
+    '',
+    '### Drift Guards',
+    '',
+    '- One slice per session.',
+    '- Tests before implementation.',
+    '- Shared types are the source of truth for data exchanged across boundaries.',
+    '- Do not couple the UI directly to provider-specific payloads.',
+    '- Do not use live AI calls in deterministic tests by default.',
+    '- Stop after slice completion.',
+    '',
+    '## Known Contracts',
+    '',
+    knownContracts,
+    '',
+    '## Unknowns',
+    '',
+    unknowns,
+    '',
+    '## Slice Backlog',
+    '',
+    '### Milestone 1 — Product Skeleton',
+    '',
+    '- [ ] Slice 1: Establish minimal frontend shell for the core user flow.',
+    '- [ ] Slice 2: Establish minimal backend or service entry point.',
+    '- [ ] Slice 3: Establish shared types or boundary models where needed.',
+    '',
+    '### Milestone 2 — Happy Path Without Live AI',
+    '',
+    '- [ ] Slice 4: Implement frontend input/output flow against deterministic stubbed behavior.',
+    '- [ ] Slice 5: Implement backend route or service with mockable AI dependency.',
+    '',
+    '### Milestone 3 — Real AI Integration',
+    '',
+    '- [ ] Slice 6: Connect backend layer to the chosen AI platform.',
+    '- [ ] Slice 7: Handle loading, timeout, and failure behavior.',
     '',
     '## Handoff Notes',
     ''
@@ -424,9 +596,20 @@ function renderRaesConfig(projectName: string): string {
 }
 
 function renderPrdUxReview(
+  archetype: SupportedArchetype,
   projectName: string,
   prdTitle: string,
-  prdBullets: string[],
+  prdSections: PrdSections
+): string {
+  if (archetype === 'frontend-backend-ai-app') {
+    return renderPrdUxReviewFrontendBackendAiApp(projectName, prdTitle, prdSections);
+  }
+  return renderPrdUxReviewCliDocGenerator(projectName, prdTitle, prdSections);
+}
+
+function renderPrdUxReviewCliDocGenerator(
+  projectName: string,
+  prdTitle: string,
   prdSections: PrdSections
 ): string {
   const observedRequirements = renderBullets(prdSections.coreFunctionality, [
@@ -463,6 +646,71 @@ function renderPrdUxReview(
   ].join('\n');
 }
 
+function renderPrdUxReviewFrontendBackendAiApp(
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
+    'The PRD should remain the source of truth for user-facing behavior.'
+  ]);
+  const uxRisks = renderBullets(deriveProductUxRisks(prdSections), [
+    'Users need legible feedback when AI output is delayed, partial, or absent.',
+    'Transitions between loading, success, and failure states must be predictable.',
+    'Variable AI output may violate user expectations if not constrained by the product flow.'
+  ]);
+  const openQuestions = renderBullets(prdSections.openQuestions, [
+    'How should the UI behave when the AI provider is unavailable?',
+    'What should the user see during streaming or long-running AI responses?',
+    'Are there content or safety boundaries the UI must enforce?'
+  ]);
+
+  return [
+    `# ${projectName} — prd-ux-review.md`,
+    '',
+    '## Purpose',
+    '',
+    `This review captures ambiguity and user-facing risk for \`${projectName}\` based on \`${prdTitle}\`.`,
+    '',
+    '## Observed Requirements',
+    '',
+    observedRequirements,
+    '',
+    '## UX Risks',
+    '',
+    uxRisks,
+    '',
+    '## Open Questions',
+    '',
+    openQuestions,
+    ''
+  ].join('\n');
+}
+
+function deriveProductUxRisks(prdSections: PrdSections): string[] {
+  const sourceBullets = [...prdSections.coreFunctionality, ...prdSections.constraints];
+  const normalized = sourceBullets.map((b) => b.toLowerCase());
+  const risks: string[] = [];
+
+  if (normalized.some((b) => b.includes('ai') || b.includes('model') || b.includes('generat'))) {
+    risks.push('Users need legible feedback when AI output is delayed, partial, or absent.');
+  }
+
+  if (normalized.some((b) => b.includes('stream'))) {
+    risks.push('Streaming responses require visible incremental progress to avoid perceived hangs.');
+  }
+
+  if (normalized.some((b) => b.includes('error') || b.includes('fail') || b.includes('invalid'))) {
+    risks.push('Error states must be distinguishable from loading states in the UI.');
+  }
+
+  if (normalized.some((b) => b.includes('auth') || b.includes('login') || b.includes('session'))) {
+    risks.push('Session expiry or auth failure during an AI interaction must produce a clear recovery path.');
+  }
+
+  return risks;
+}
+
 function deriveCliUxRisks(prdSections: PrdSections): string[] {
   const sourceBullets = [...prdSections.coreFunctionality, ...prdSections.constraints];
   const normalizedBullets = sourceBullets.map((bullet) => bullet.toLowerCase());
@@ -482,7 +730,7 @@ function deriveCliUxRisks(prdSections: PrdSections): string[] {
 
   if (
     normalizedBullets.some(
-      (bullet) => bullet.includes('archetype') || bullet.includes(SUPPORTED_ARCHETYPE)
+      (bullet) => bullet.includes('archetype') || bullet.includes('cli-doc-generator')
     )
   ) {
     risks.push('Operators need to understand the accepted archetype before generation starts.');

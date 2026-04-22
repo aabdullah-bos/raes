@@ -91,11 +91,11 @@ test('rejects unsupported archetypes without writing files', async () => {
     generateDocs({
       prdPath: sourcePrd,
       targetProjectPath: targetProject,
-      archetype: 'frontend-backend-ai-app'
+      archetype: 'unknown-archetype'
     }),
     {
       name: 'Error',
-      message: 'unsupported archetype: frontend-backend-ai-app (supported: cli-doc-generator)'
+      message: 'unsupported archetype: unknown-archetype (supported: cli-doc-generator, frontend-backend-ai-app)'
     }
   );
 });
@@ -444,4 +444,75 @@ test('derives CLI-oriented UX risks and open questions from PRD workflow failure
   assert.match(uxRisks, /validation blocks generation/);
   assert.match(uxRisks, /existing docs already exist at the target path/);
   assert.match(openQuestions, /Should PRD headings be normalized before copying/);
+});
+
+test('generates all 8 files for the frontend-backend-ai-app archetype', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'my-ai-app');
+
+  await writeFile(sourcePrd, '# My AI App\n', 'utf8');
+
+  const generated = await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'frontend-backend-ai-app'
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  assert.deepEqual(generated, [
+    join(docsDir, 'prd.md'),
+    join(docsDir, 'system.md'),
+    join(docsDir, 'pipeline.md'),
+    join(docsDir, 'decisions.md'),
+    join(docsDir, 'prd-ux-review.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md'),
+    join(docsDir, 'raes.config.yaml')
+  ]);
+});
+
+test('frontend-backend-ai-app system.md reflects AI and frontend/backend concerns', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'chat-app');
+
+  await writeFile(
+    sourcePrd,
+    [
+      '# Chat App',
+      '',
+      '## Core Functionality',
+      '',
+      '- Users submit a message and receive an AI-generated reply.',
+      '- The backend routes requests to the AI model provider.',
+      '',
+      '## Open Questions',
+      '',
+      '- Should responses be streamed to the client?'
+    ].join('\n'),
+    'utf8'
+  );
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'frontend-backend-ai-app'
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
+  const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
+  const reviewText = await readFile(join(docsDir, 'prd-ux-review.md'), 'utf8');
+
+  assert.match(systemText, /frontend-backend-ai-app/);
+  assert.match(systemText, /AI behavior should support the product flow/);
+  assert.match(systemText, /provider-specific AI payloads/);
+  assert.match(systemText, /The backend routes requests to the AI model provider/);
+
+  assert.match(pipelineText, /Product Skeleton/);
+  assert.match(pipelineText, /Happy Path Without Live AI/);
+  assert.match(pipelineText, /Real AI Integration/);
+
+  assert.match(reviewText, /Should responses be streamed/);
 });

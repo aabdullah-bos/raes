@@ -1,6 +1,6 @@
 # raes-init
 
-Generate a structured, constraint-driven project plan from a greenfield project or an existing PRD with no implementaiton.
+Generate a structured, constraint-driven project plan from a greenfield project or an existing PRD with no implementation.
 
 `raes-init` is the entry point to the RAES workflow — a lightweight system for building software with AI **without drift**.
 
@@ -62,40 +62,58 @@ Repeat.
 
 ## Quick start
 
-### 1. Write a PRD
+`raes-init` supports two modes.
 
-```markdown
-# My Project
-
-## Core Functionality
-- Accept a file input
-- Generate output files
-
-## Constraints
-- Must be CLI-based
-- Must not overwrite existing files
-
-## Open Questions
-- How strict should validation be?
-```
-
-### 2. Run raes-init
+### Bare greenfield — no PRD yet
 
 ```bash
-raes-init <path-to-prd> <target-project-path> cli-doc-generator
+raes-init <target-project-path> cli-doc-generator
 ```
 
-### 3. Execute with AI
+Generates stub docs with section structure and no content. Fill in the stubs before running the first slice.
+
+### PRD-seeded — you already have a PRD
+
+```bash
+# Set the inference provider before running
+export RAES_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=sk-...
+
+raes-init --from-prd <path-to-prd> <target-project-path> cli-doc-generator
+```
+
+Generates docs adapted from the source PRD. The PRD is copied verbatim to `docs/prd.md`; the other docs are populated with content derived from PRD sections.
+
+### After init — execute with AI
 
 ```text
-Read these files first and treat them as authoritative:
-- <project>/docs/prd.md
-- <project>/docs/system.md
-- <project>/docs/pipeline.md
-- <project>/docs/decisions.md
-
-Then inspect the repository and execute the next unchecked slice using strict TDD.
+Read raes.config.yaml and use it to locate the authoritative project artifacts.
+Execute the next unchecked slice using strict TDD. Stop after the slice.
 ```
+
+---
+
+## Environment variables
+
+`--from-prd` selects an inference provider via environment variables. Provider config never lives in `raes.config.yaml` — it must stay portable and committable.
+
+| Variable | Required | Description |
+|---|---|---|
+| `RAES_PROVIDER` | Yes (for `--from-prd`) | Provider to use: `anthropic`, `openai`, or `local` |
+| `ANTHROPIC_API_KEY` | If `RAES_PROVIDER=anthropic` | Anthropic API key |
+| `OPENAI_API_KEY` | If `RAES_PROVIDER=openai` | OpenAI API key |
+| `RAES_LOCAL_ENDPOINT` | If `RAES_PROVIDER=local` | Base URL of an OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) |
+| `RAES_MODEL` | No | Override the provider's default model |
+
+**Provider defaults** (when `RAES_MODEL` is not set):
+
+| Provider | Default model |
+|---|---|
+| `anthropic` | `claude-haiku-4-5-20251001` |
+| `openai` | `gpt-4o-mini` |
+| `local` | `llama3` |
+
+`raes-init --from-prd` fails fast with a clear error before writing any files if `RAES_PROVIDER` is unset, unsupported, or missing its required credential.
 
 ---
 
@@ -122,7 +140,7 @@ A system for making AI behave like a disciplined engineer.
 
 ---
 
-## Current scope (V1)
+## Current scope
 
 - Greenfield or Single PRD input
 - Single archetype: cli-doc-generator (Using raes to build raes)

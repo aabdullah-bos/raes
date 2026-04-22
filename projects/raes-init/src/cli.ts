@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { generateDocs, GenerationError } from './generate-docs.ts';
-import { loadProvider, ProviderError } from './provider.ts';
+import { loadProvider, ProviderError, type Provider } from './provider.ts';
 import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -57,9 +57,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 1;
   }
 
+  let provider: Provider | undefined;
   if (isFromPrd) {
     try {
-      loadProvider();
+      provider = loadProvider();
     } catch (error) {
       if (error instanceof ProviderError) {
         console.error(error.message);
@@ -70,7 +71,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   try {
-    await generateDocs({ prdPath, targetProjectPath, archetype });
+    await generateDocs({ prdPath, targetProjectPath, archetype, provider });
     return 0;
   } catch (error) {
     if (error instanceof GenerationError) {

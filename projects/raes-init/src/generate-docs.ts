@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import type { Provider } from './provider.ts';
 
 export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app'] as const;
 export type SupportedArchetype = (typeof SUPPORTED_ARCHETYPES)[number];
@@ -52,6 +53,7 @@ export type GenerateDocsInput = {
   prdPath?: string;
   targetProjectPath: string;
   archetype: string;
+  provider?: Provider;
 };
 
 type PrdSections = {
@@ -63,7 +65,8 @@ type PrdSections = {
 export async function generateDocs({
   prdPath,
   targetProjectPath,
-  archetype
+  archetype,
+  provider
 }: GenerateDocsInput): Promise<string[]> {
   validateRequiredInput('target project path', targetProjectPath);
   validateRequiredInput('archetype', archetype);
@@ -103,10 +106,21 @@ export async function generateDocs({
   const prdBullets = extractPrdBullets(prdText);
   const prdSections = extractPrdSections(prdText);
 
+  // Derive pipeline.md via AI when provider and prdPath are both present.
+  // Shape guard runs here so validation fails before any writes.
+  let pipelineMdContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    const prompt = buildPipelinePrompt(prdText, resolvedArchetype);
+    pipelineMdContent = await provider.complete(prompt);
+    validateGeneratedDocShape('pipeline.md', REQUIRED_DOC_HEADINGS['pipeline.md'] ?? [], pipelineMdContent);
+  } else {
+    pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections);
+  }
+
   const generatedContent = new Map<string, string>([
     ['prd.md', prdText],
     ['system.md', renderSystemDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
-    ['pipeline.md', renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
+    ['pipeline.md', pipelineMdContent],
     ['decisions.md', renderDecisionsDoc(projectName)],
     ['prd-ux-review.md', renderPrdUxReview(resolvedArchetype, projectName, prdTitle, prdSections)],
     ['execution-guidance.md', renderExecutionGuidanceDoc(projectName)],
@@ -393,6 +407,34 @@ function renderSystemDocFrontendBackendAiApp(
     '5. Known contracts remain aligned.',
     '6. Any durable decision was recorded in `decisions.md`.',
     ''
+  ].join('\n');
+}
+
+function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): string {
+  return [
+    `You are generating a RAES pipeline.md for a software project.`,
+    ``,
+    `Archetype: ${archetype}`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `Generate a complete RAES pipeline.md document containing ALL of the following headings in order:`,
+    `## Purpose`,
+    `## Invariants`,
+    `## Known Contracts`,
+    `## Unknowns`,
+    `## Slice Backlog`,
+    `## Handoff Notes`,
+    ``,
+    `Under ## Slice Backlog, include at least one unchecked slice entry in the format:`,
+    `- [ ] Slice N: <description>`,
+    ``,
+    `Under ## Invariants, include ### Product Invariants and ### Drift Guards subsections.`,
+    ``,
+    `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
   ].join('\n');
 }
 

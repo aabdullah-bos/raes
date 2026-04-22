@@ -472,6 +472,127 @@ test('generates all 8 files for the frontend-backend-ai-app archetype', async ()
   ]);
 });
 
+test('uses provider output for pipeline.md when provider and prdPath are both set', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'ai-pipeline-tool');
+
+  await writeFile(
+    sourcePrd,
+    ['# AI Pipeline Tool', '', '## Core Functionality', '', '- Do a thing.'].join('\n'),
+    'utf8'
+  );
+
+  const mockPipelineContent = [
+    '# AI Pipeline Tool — pipeline.md',
+    '',
+    '## Purpose',
+    '',
+    'AI-derived purpose from PRD.',
+    '',
+    '## Invariants',
+    '',
+    '### Product Invariants',
+    '',
+    '- AI-derived invariant.',
+    '',
+    '### Drift Guards',
+    '',
+    '- One slice per session.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Do a thing.',
+    '',
+    '## Unknowns',
+    '',
+    '- TBD.',
+    '',
+    '## Slice Backlog',
+    '',
+    '### Milestone 1',
+    '',
+    '- [ ] Slice 1: Initial implementation.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+
+  let capturedPrompt = '';
+  const mockProvider = {
+    async complete(prompt: string): Promise<string> {
+      capturedPrompt = prompt;
+      return mockPipelineContent;
+    }
+  };
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator',
+    provider: mockProvider
+  });
+
+  const pipelineText = await readFile(join(targetProject, 'docs', 'pipeline.md'), 'utf8');
+  assert.equal(pipelineText, mockPipelineContent);
+  assert.match(capturedPrompt, /AI Pipeline Tool/);
+  assert.match(capturedPrompt, /cli-doc-generator/);
+});
+
+test('rejects AI pipeline.md missing required headings before any writes', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'bad-ai-pipeline-tool');
+
+  await writeFile(sourcePrd, '# Bad AI Pipeline Tool\n', 'utf8');
+
+  const mockProvider = {
+    async complete(_prompt: string): Promise<string> {
+      return '# Bad Output\n\nMissing required headings.\n';
+    }
+  };
+
+  await assert.rejects(
+    generateDocs({
+      prdPath: sourcePrd,
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator',
+      provider: mockProvider
+    }),
+    (err: unknown) => {
+      assert(err instanceof GenerationError);
+      assert.match(err.message, /generated pipeline\.md is missing required sections/);
+      return true;
+    }
+  );
+
+  const docsDir = join(targetProject, 'docs');
+  await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
+});
+
+test('bare greenfield mode does not call provider even when provider is present', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'greenfield-with-provider');
+
+  let providerCalled = false;
+  const mockProvider = {
+    async complete(_prompt: string): Promise<string> {
+      providerCalled = true;
+      return 'should not be called';
+    }
+  };
+
+  await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator',
+    provider: mockProvider
+  });
+
+  assert.equal(providerCalled, false);
+  const pipelineText = await readFile(join(targetProject, 'docs', 'pipeline.md'), 'utf8');
+  assert.match(pipelineText, /\[ \] Slice 1/);
+});
+
 test('frontend-backend-ai-app system.md reflects AI and frontend/backend concerns', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
   const sourcePrd = join(tempRoot, 'source-prd.md');

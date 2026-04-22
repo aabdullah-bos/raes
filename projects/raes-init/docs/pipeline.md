@@ -172,6 +172,35 @@ A slice is complete only when:
   - Bare greenfield mode and existing `--from-prd` string-parsing output are unaffected
   - All 16 existing tests continue to pass
 
+### Milestone 8 — AI-Derived Doc Generation
+
+- [x] Review Slice: Define execution slices for AI-derived doc generation in `raes-init --from-prd`
+  - Inspect current `generate-docs.ts` render functions, `provider.ts` interface, and CLI flow against Issue #12 acceptance criteria
+  - Identify the prompt design for each affected file: `pipeline.md` (slice backlog), `decisions.md` (extracted constraints), `execution-guidance.md` (DoD, anti-patterns, workflow rules)
+  - Identify the minimal wiring change needed in `generateDocs` to call `complete()` when a provider is available, without altering the create-or-fail write contract or bare greenfield behavior
+  - Identify how to make AI-derived content testable without live provider calls (mock contract, output shape assertions)
+  - Confirm which files stay unchanged: `prd.md` (verbatim), `system.md` (string parsing), `prd-ux-review.md` (string parsing), `validation.md` (stub)
+  - Produce concrete, sequenced execution slices for Milestone 8 and append them to this backlog
+  - No implementation code
+
+- [ ] Execution Slice 8.1: Wire provider into `generateDocs()` and produce AI-derived `pipeline.md`
+  - Add `provider?: Provider` to `GenerateDocsInput`; update `cli.ts` to pass the loaded provider to `generateDocs()` rather than discarding it
+  - Update `generateDocs()` to `await` render calls for AI-backed files; the content Map construction becomes sequential awaited calls for `pipeline.md`, `decisions.md`, `execution-guidance.md`
+  - For `cli-doc-generator` archetype: when `provider` is present and `prdPath` is set, call `provider.complete(prompt)` to produce `pipeline.md`; when provider is absent or bare greenfield mode, fall back to current string-parsing stub
+  - Prompt for `pipeline.md`: supply full PRD text and archetype; instruct the model to produce a RAES `pipeline.md` with required headings (`## Purpose`, `## Invariants`, `## Known Contracts`, `## Unknowns`, `## Slice Backlog` with `- [ ] Slice N:` entries, `## Handoff Notes`); do not fabricate requirements not in the PRD
+  - Shape guard (`validateGeneratedDocShape`) is applied to AI output; if required headings are missing, generation fails with `GenerationError` before any write
+  - Create-or-fail write contract is unaffected: `failIfOutputsExist()` runs before any AI calls
+  - Files unchanged: `prd.md`, `system.md`, `prd-ux-review.md`, `decisions.md` (still stub in this slice), `execution-guidance.md` (still stub in this slice), `validation.md`
+  - Bare greenfield mode (`prdPath` undefined): no provider call; all 24 existing tests pass
+  - New tests: mock `Provider` injected into `generateDocs()`; mock returns a valid `pipeline.md` string containing required headings; assert shape guard passes; assert bare greenfield path unchanged; assert provider-absent `--from-prd` CLI exit already covered by existing test
+
+- [ ] Execution Slice 8.2: Produce AI-derived `decisions.md` and `execution-guidance.md`
+  - Same wiring established in Slice 8.1; extend to `renderDecisionsDoc` and `renderExecutionGuidanceDoc`
+  - Prompt for `decisions.md`: supply full PRD text; instruct the model to extract non-negotiable constraints, technology choices, and durable rules as RAES decision entries; output must contain `## Durable Decisions`
+  - Prompt for `execution-guidance.md`: supply full PRD text; instruct the model to derive invariants, workflow rules, anti-patterns, and definition of done grounded in PRD constraints; output must contain `## Invariants`, `## Workflow Rules`, `## Anti-Patterns`, `## Definition of Done`
+  - Shape guard applied to both AI outputs before write
+  - All prior tests pass; new tests: mock provider for each file; shape assertions for required headings; confirm `validation.md` remains a stub
+
 ---
 
 ## Handoff Notes
@@ -199,3 +228,4 @@ A slice is complete only when:
 - 2026-04-20: Review Slice — `docs/prd.md` updated to align with current V1 decisions. Corrected: input contract (file path only, PRD optional, `cli-doc-generator` only), output set (8 files, not 5), initialization modes (bare greenfield + `--from-prd` documented), generation logic section (clarified archetype templates are not consumed), open questions (removed answered question re: PRD optionality). No implementation changes.
 - 2026-04-20: Execution Slice — raes-init now supports two initialization modes. CLI: `raes-init <target-path> <archetype>` (bare greenfield) and `raes-init --from-prd <prd-path> <target-path> <archetype>` (PRD-seeded). `prdPath` is optional in `GenerateDocsInput`; bare greenfield uses `renderPrdStub()` which produces a `prd.md` with section headers (Overview, Goals, Non-Goals, Constraints, Open Questions) and no content; PRD parsing falls back to generic defaults when stub sections are empty. All 16 tests pass; typecheck clean. Next recommended: Review Slice — Assess `raes-init --from-prd` for AI-inference enhancement (requires provider interface design).
 - 2026-04-22: Execution Slice — Provider interface implemented in `src/provider.ts`. Defines `Provider` type (`complete(prompt): Promise<string>`) and `ProviderError`. `loadProvider()` reads `RAES_PROVIDER` env var and returns an `anthropic`, `openai`, or `local` provider; fails fast with `ProviderError` if unset, unsupported, or missing required credentials/endpoint. `RAES_MODEL` override supported; defaults: anthropic=`claude-haiku-4-5-20251001`, openai=`gpt-4o-mini`, local=`llama3`. `cli.ts` calls `loadProvider()` before `generateDocs()` when `--from-prd` is active — fails fast before any file I/O on provider misconfiguration. Doc generation logic (string-parsing) is unchanged; provider is wired but not yet used for generation. 8 new tests added (24 total); all pass; typecheck clean. Next recommended: Execution Slice — Wire provider into `--from-prd` generation (replace string-parsing with AI-backed doc derivation).
+- 2026-04-22: Review Slice — Milestone 8 execution slices defined. Artifacts inspected: `src/generate-docs.ts`, `src/provider.ts`, `src/cli.ts`, `tests/generate-docs.test.ts`, `tests/provider.test.ts`, Issue #12. Key findings: (1) Provider is loaded in `cli.ts` but immediately discarded — `generateDocs()` has no `provider` parameter, which is the sole wiring gap. (2) Render functions for `pipeline.md`, `decisions.md`, `execution-guidance.md` are synchronous and return stub strings; making them AI-backed requires the generation step in `generateDocs()` to `await` each render call individually. (3) Existing shape guard (`validateGeneratedDocShape`) can be applied to AI output without change — it enforces required headings and throws `GenerationError` on failure. (4) Mock contract for tests: inject a `Provider` object directly into `generateDocs()` via `GenerateDocsInput`; tests assert required headings present in generated content. (5) Files that stay unchanged: `prd.md` (verbatim copy), `system.md` (string parsing), `prd-ux-review.md` (heuristic), `validation.md` (stub). Flag: project `raes.config.yaml` uses `build_init` (not `build_intent`) and points `execution_guidance` to `docs/system.md` (not `docs/execution-guidance.md`) — both diverge from `decisions.md` contracts and the generated `raes.config.yaml` output; this drift should be resolved in a separate cleanup slice. Next recommended: Execution Slice 8.1 — Wire provider into `generateDocs()` and produce AI-derived `pipeline.md`.

@@ -117,13 +117,35 @@ export async function generateDocs({
     pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections);
   }
 
+  // Derive decisions.md via AI when provider and prdPath are both present.
+  // Shape guard runs here so validation fails before any writes.
+  let decisionsMdContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    const prompt = buildDecisionsPrompt(prdText);
+    decisionsMdContent = await provider.complete(prompt);
+    validateGeneratedDocShape('decisions.md', REQUIRED_DOC_HEADINGS['decisions.md'] ?? [], decisionsMdContent);
+  } else {
+    decisionsMdContent = renderDecisionsDoc(projectName);
+  }
+
+  // Derive execution-guidance.md via AI when provider and prdPath are both present.
+  // Shape guard runs here so validation fails before any writes.
+  let executionGuidanceMdContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    const prompt = buildExecutionGuidancePrompt(prdText);
+    executionGuidanceMdContent = await provider.complete(prompt);
+    validateGeneratedDocShape('execution-guidance.md', REQUIRED_DOC_HEADINGS['execution-guidance.md'] ?? [], executionGuidanceMdContent);
+  } else {
+    executionGuidanceMdContent = renderExecutionGuidanceDoc(projectName);
+  }
+
   const generatedContent = new Map<string, string>([
     ['prd.md', prdText],
     ['system.md', renderSystemDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
     ['pipeline.md', pipelineMdContent],
-    ['decisions.md', renderDecisionsDoc(projectName)],
+    ['decisions.md', decisionsMdContent],
     ['prd-ux-review.md', renderPrdUxReview(resolvedArchetype, projectName, prdTitle, prdSections)],
-    ['execution-guidance.md', renderExecutionGuidanceDoc(projectName)],
+    ['execution-guidance.md', executionGuidanceMdContent],
     ['validation.md', renderValidationDoc(projectName)],
     ['raes.config.yaml', renderRaesConfig(projectName)]
   ]);
@@ -433,6 +455,46 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
     `Under ## Invariants, include ### Product Invariants and ### Drift Guards subsections.`,
     ``,
     `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
+  ].join('\n');
+}
+
+function buildDecisionsPrompt(prdText: string): string {
+  return [
+    `You are generating a RAES decisions.md for a software project.`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `Extract non-negotiable constraints, technology choices, and durable rules from the PRD as RAES decision entries.`,
+    `Generate a complete RAES decisions.md document containing the following heading:`,
+    `## Durable Decisions`,
+    ``,
+    `Under ## Durable Decisions, include a markdown table with columns: Decision | Rationale | Date.`,
+    `Each row should capture one durable decision grounded in the PRD.`,
+    ``,
+    `Do not fabricate decisions not supported by the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
+  ].join('\n');
+}
+
+function buildExecutionGuidancePrompt(prdText: string): string {
+  return [
+    `You are generating a RAES execution-guidance.md for a software project.`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `Derive invariants, workflow rules, anti-patterns, and definition of done grounded in the PRD constraints.`,
+    `Generate a complete RAES execution-guidance.md document containing ALL of the following headings in order:`,
+    `## Invariants`,
+    `## Workflow Rules`,
+    `## Anti-Patterns`,
+    `## Definition of Done`,
+    ``,
+    `Do not fabricate guidance not supported by the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
     `Output only the markdown document with no preamble or explanation.`
   ].join('\n');

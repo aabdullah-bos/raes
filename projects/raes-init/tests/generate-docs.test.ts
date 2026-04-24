@@ -518,11 +518,51 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
     ''
   ].join('\n');
 
-  let capturedPrompt = '';
+  const mockDecisionsContent = [
+    '# AI Pipeline Tool — decisions.md',
+    '',
+    '## Durable Decisions',
+    '',
+    '| Decision | Rationale | Date |',
+    '|---|---|---|',
+    '| Use markdown output | Keeps docs human-readable | 2026-04-24 |',
+    ''
+  ].join('\n');
+
+  const mockExecutionGuidanceContent = [
+    '# AI Pipeline Tool — execution-guidance.md',
+    '',
+    '## Invariants',
+    '',
+    '- Output must be readable markdown.',
+    '',
+    '## Workflow Rules',
+    '',
+    '- One slice per session.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Do not overwrite existing docs.',
+    '',
+    '## Definition of Done',
+    '',
+    '- All required docs generated.',
+    ''
+  ].join('\n');
+
+  let callCount = 0;
+  let capturedPipelinePrompt = '';
   const mockProvider = {
     async complete(prompt: string): Promise<string> {
-      capturedPrompt = prompt;
-      return mockPipelineContent;
+      callCount += 1;
+      if (callCount === 1) {
+        capturedPipelinePrompt = prompt;
+        return mockPipelineContent;
+      }
+      if (callCount === 2) {
+        return mockDecisionsContent;
+      }
+      return mockExecutionGuidanceContent;
     }
   };
 
@@ -535,8 +575,9 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
 
   const pipelineText = await readFile(join(targetProject, 'docs', 'pipeline.md'), 'utf8');
   assert.equal(pipelineText, mockPipelineContent);
-  assert.match(capturedPrompt, /AI Pipeline Tool/);
-  assert.match(capturedPrompt, /cli-doc-generator/);
+  assert.match(capturedPipelinePrompt, /AI Pipeline Tool/);
+  assert.match(capturedPipelinePrompt, /cli-doc-generator/);
+  assert.equal(callCount, 3);
 });
 
 test('rejects AI pipeline.md missing required headings before any writes', async () => {
@@ -636,4 +677,246 @@ test('frontend-backend-ai-app system.md reflects AI and frontend/backend concern
   assert.match(pipelineText, /Real AI Integration/);
 
   assert.match(reviewText, /Should responses be streamed/);
+});
+
+test('uses provider output for decisions.md and execution-guidance.md when provider and prdPath are set', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'ai-decisions-tool');
+
+  await writeFile(
+    sourcePrd,
+    ['# AI Decisions Tool', '', '## Core Functionality', '', '- Process user input.'].join('\n'),
+    'utf8'
+  );
+
+  const mockPipelineContent = [
+    '# AI Decisions Tool — pipeline.md',
+    '',
+    '## Purpose',
+    '',
+    'Pipeline purpose.',
+    '',
+    '## Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Process user input.',
+    '',
+    '## Unknowns',
+    '',
+    '- TBD.',
+    '',
+    '## Slice Backlog',
+    '',
+    '- [ ] Slice 1: Initial implementation.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+
+  const mockDecisionsContent = [
+    '# AI Decisions Tool — decisions.md',
+    '',
+    '## Durable Decisions',
+    '',
+    '| Decision | Rationale | Date |',
+    '|---|---|---|',
+    '| Use markdown output | Human-readable | 2026-04-24 |',
+    ''
+  ].join('\n');
+
+  const mockExecutionGuidanceContent = [
+    '# AI Decisions Tool — execution-guidance.md',
+    '',
+    '## Invariants',
+    '',
+    '- Output must be valid markdown.',
+    '',
+    '## Workflow Rules',
+    '',
+    '- One slice per session.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Do not overwrite existing docs.',
+    '',
+    '## Definition of Done',
+    '',
+    '- All required docs generated.',
+    ''
+  ].join('\n');
+
+  let callCount = 0;
+  let capturedDecisionsPrompt = '';
+  let capturedGuidancePrompt = '';
+  const mockProvider = {
+    async complete(prompt: string): Promise<string> {
+      callCount += 1;
+      if (callCount === 1) return mockPipelineContent;
+      if (callCount === 2) {
+        capturedDecisionsPrompt = prompt;
+        return mockDecisionsContent;
+      }
+      capturedGuidancePrompt = prompt;
+      return mockExecutionGuidanceContent;
+    }
+  };
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator',
+    provider: mockProvider
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  const decisionsText = await readFile(join(docsDir, 'decisions.md'), 'utf8');
+  const guidanceText = await readFile(join(docsDir, 'execution-guidance.md'), 'utf8');
+
+  assert.equal(decisionsText, mockDecisionsContent);
+  assert.equal(guidanceText, mockExecutionGuidanceContent);
+  assert.match(capturedDecisionsPrompt, /AI Decisions Tool/);
+  assert.match(capturedGuidancePrompt, /AI Decisions Tool/);
+  assert.equal(callCount, 3);
+
+  // validation.md is still a stub
+  const validationText = await readFile(join(docsDir, 'validation.md'), 'utf8');
+  assert.match(validationText, /## Testing Approach/);
+  assert.match(validationText, /## Validation Commands/);
+});
+
+test('rejects AI decisions.md missing required headings before any writes', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'bad-ai-decisions-tool');
+
+  await writeFile(sourcePrd, '# Bad AI Decisions Tool\n', 'utf8');
+
+  const validPipelineContent = [
+    '# Bad AI Decisions Tool — pipeline.md',
+    '',
+    '## Purpose',
+    '',
+    'Purpose.',
+    '',
+    '## Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- TBD.',
+    '',
+    '## Slice Backlog',
+    '',
+    '- [ ] Slice 1: Implementation.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+
+  let callCount = 0;
+  const mockProvider = {
+    async complete(_prompt: string): Promise<string> {
+      callCount += 1;
+      if (callCount === 1) return validPipelineContent;
+      return '# Bad Output\n\nMissing required headings.\n';
+    }
+  };
+
+  await assert.rejects(
+    generateDocs({
+      prdPath: sourcePrd,
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator',
+      provider: mockProvider
+    }),
+    (err: unknown) => {
+      assert(err instanceof GenerationError);
+      assert.match(err.message, /generated decisions\.md is missing required sections/);
+      return true;
+    }
+  );
+
+  const docsDir = join(targetProject, 'docs');
+  await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
+});
+
+test('rejects AI execution-guidance.md missing required headings before any writes', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'bad-ai-guidance-tool');
+
+  await writeFile(sourcePrd, '# Bad AI Guidance Tool\n', 'utf8');
+
+  const validPipelineContent = [
+    '# Bad AI Guidance Tool — pipeline.md',
+    '',
+    '## Purpose',
+    '',
+    'Purpose.',
+    '',
+    '## Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- TBD.',
+    '',
+    '## Slice Backlog',
+    '',
+    '- [ ] Slice 1: Implementation.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+
+  const validDecisionsContent = [
+    '# Bad AI Guidance Tool — decisions.md',
+    '',
+    '## Durable Decisions',
+    '',
+    '| Decision | Rationale | Date |',
+    '|---|---|---|',
+    ''
+  ].join('\n');
+
+  let callCount = 0;
+  const mockProvider = {
+    async complete(_prompt: string): Promise<string> {
+      callCount += 1;
+      if (callCount === 1) return validPipelineContent;
+      if (callCount === 2) return validDecisionsContent;
+      return '# Bad Output\n\nMissing required headings.\n';
+    }
+  };
+
+  await assert.rejects(
+    generateDocs({
+      prdPath: sourcePrd,
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator',
+      provider: mockProvider
+    }),
+    (err: unknown) => {
+      assert(err instanceof GenerationError);
+      assert.match(err.message, /generated execution-guidance\.md is missing required sections/);
+      return true;
+    }
+  );
+
+  const docsDir = join(targetProject, 'docs');
+  await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
 });

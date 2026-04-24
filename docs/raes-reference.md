@@ -299,8 +299,6 @@ The schema was defined and implemented in an Execution Slice (2026-04-19). `raes
 
 `README.md` updated in a Review Slice (2026-04-20) to document both slice types with their distinct loops, rules, and completion criteria. The two-slice-type model (Execution Slice and Review Slice) is now present in both `README.md` and this document.
 
-`RAES_template.md` still uses the single-loop model and is a candidate for a future cleanup slice, but it is a reference template rather than operator-facing docs, so it is lower priority.
-
 ---
 
 **Gap 5: Existing prompt examples use hardcoded paths, not config-based routing** ✓ Resolved 2026-04-20

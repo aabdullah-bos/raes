@@ -82,6 +82,9 @@ The generator is responsible for producing these files under `<target-project-pa
 - `pipeline.md`
 - `decisions.md`
 - `prd-ux-review.md`
+- `execution-guidance.md`
+- `validation.md`
+- `raes.config.yaml`
 
 ### Write Rules
 
@@ -89,11 +92,11 @@ The generator is responsible for producing these files under `<target-project-pa
   - Create if missing
   - Reuse if already present and none of the required generated files exist
 - `prd.md`:
-  - Create from the source PRD file in the happy path
-  - Fail if `PRD.md` already exists at the target path
+  - Create from the source PRD file in the happy path, or as a stub in bare greenfield mode
+  - Fail if `prd.md` already exists at the target path
   - Do not overwrite
   - Do not merge
-- `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`:
+- `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, `raes.config.yaml`:
   - Create if absent
   - Fail if any already exist
   - Do not overwrite

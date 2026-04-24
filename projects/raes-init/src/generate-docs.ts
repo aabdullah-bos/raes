@@ -87,8 +87,6 @@ export async function generateDocs({
 
   await failIfOutputsExist(outputPaths);
 
-  await mkdir(docsDirectory, { recursive: true });
-
   const projectName = basename(targetProjectPath) || 'project';
 
   let prdText: string;
@@ -103,7 +101,6 @@ export async function generateDocs({
   }
 
   const prdTitle = extractPrdTitle(prdText, projectName);
-  const prdBullets = extractPrdBullets(prdText);
   const prdSections = extractPrdSections(prdText);
 
   // Derive pipeline.md via AI when provider and prdPath are both present.
@@ -150,6 +147,8 @@ export async function generateDocs({
     ['raes.config.yaml', renderRaesConfig(projectName)]
   ]);
 
+  await mkdir(docsDirectory, { recursive: true });
+
   for (const outputPath of outputPaths) {
     const fileName = basename(outputPath);
     const content = generatedContent.get(fileName);
@@ -190,20 +189,6 @@ function extractPrdTitle(prdText: string, fallback: string): string {
     }
   }
   return fallback;
-}
-
-function extractPrdBullets(prdText: string): string[] {
-  const bullets: string[] = [];
-  for (const line of prdText.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('- ')) {
-      bullets.push(trimmed.slice(2).trim());
-    }
-    if (bullets.length === 3) {
-      break;
-    }
-  }
-  return bullets;
 }
 
 function extractPrdSections(prdText: string): PrdSections {
@@ -307,7 +292,7 @@ function renderSystemDocCliDocGenerator(
     'Input mode: one readable PRD markdown file path.',
     'Target location: `<target>/docs/`.',
     `Supported archetypes: \`${SUPPORTED_ARCHETYPES.join('`, `')}\`.`,
-    'Generated files: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, and `prd-ux-review.md`.'
+    'Generated files: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, and `raes.config.yaml`.'
   ]);
   const unknowns = renderBullets(prdSections.openQuestions, [
     'How much PRD normalization should be applied beyond copying `prd.md`.',

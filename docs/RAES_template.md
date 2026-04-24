@@ -7,15 +7,18 @@ Use this template to instantiate RAES for a new project.
 When starting from an existing PRD:
 
 1. Create the following files in `/docs`:
-   - `PRD.md`
+   - `prd.md`
    - `system.md`
    - `pipeline.md`
    - `decisions.md`
    - `prd-ux-review.md`
+   - `execution-guidance.md`
+   - `validation.md`
+   - `raes.config.yaml`
 
 2. Copy this template into `pipeline.md` unless a project-specific pipeline already exists.
 
-3. Treat `PRD.md` as the source of product intent.
+3. Treat `prd.md` as the source of product intent.
 
 4. Help the operator create `system.md` by identifying:
    - Product Invariants
@@ -58,8 +61,39 @@ It is designed to optimize for:
 
 ---
 
-## Core Loop
-PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD → REPEAT
+## Slice Types
+
+### Execution Slice
+
+Use for code changes, behavior changes, and any work whose completion can be verified by passing validation.
+
+Loop:
+PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+
+Rules:
+- One slice only
+- Write failing tests first
+- Implement the minimum code required to make those tests pass
+- Run relevant tests and typecheck
+- Append handoff notes to `pipeline.md`
+- Append durable decisions to `decisions.md` only when needed
+- Stop immediately after completing the slice
+
+### Review Slice
+
+Use for PRD review, artifact generation, gap analysis, and any work whose output is a durable document rather than a code change.
+
+Loop:
+PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
+
+Rules:
+- Inspect authoritative artifacts before writing anything
+- Compare current state to build intent
+- Identify concrete gaps explicitly
+- Produce bounded next slices
+- Update `pipeline.md`
+- Record rationale in `decisions.md` only when it must persist
+- No implementation code unless the slice explicitly requires it
 
 ---
 
@@ -75,11 +109,14 @@ PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD �
 
 ## Directory Structure
 /docs
-  PRD.md
+  prd.md
   system.md
   pipeline.md
   decisions.md
   prd-ux-review.md
+  execution-guidance.md
+  validation.md
+  raes.config.yaml
 
 /src
 /tests
@@ -205,22 +242,36 @@ Example:
 
 ## 6. Execution Prompt
 
-Read (project-specific docs):
-- docs/PRD.md
-- docs/system.md
-- docs/pipeline.md
-- docs/decisions.md
+Read `docs/raes.config.yaml` first and use it to locate the authoritative
+project artifacts for:
+- build intent
+- next slice
+- execution guidance
+- durable decisions
+- validation guidance
 
-Rules:
-- One slice only
+Read the first unchecked slice in the configured backlog. Identify its type:
+Execution Slice or Review Slice. Apply the rules for that type only.
+
+EXECUTION SLICE
+- Loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 - Write failing tests first
-- Minimal implementation
-- Run tests + typecheck
-- No regressions
-- Mark slice complete
+- Implement the minimum code required to make those tests pass
+- Run relevant tests and typecheck
+- Append handoff notes to `pipeline.md`
+- Append durable implementation decisions to `decisions.md` only when needed
 
-If unclear:
-- Split slice before proceeding
+REVIEW SLICE
+- Loop: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
+- Inspect authoritative artifacts before writing anything
+- Identify concrete gaps explicitly
+- Produce bounded next slices
+- Update `pipeline.md`
+- No implementation code
+
+In either case:
+- Stop after one slice
+- Flag missing or conflicting guidance before proceeding
 
 ---
 

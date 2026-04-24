@@ -77,3 +77,15 @@
 - Its findings should flow into `execution-guidance.md` (as UX constraints) and `decisions.md` (as decided UX patterns) before the first execution slice runs. Once that transfer is done, `prd-ux-review.md` has served its purpose.
 - For CLI/tooling archetypes, UX concerns belong as a `## Operator Experience Rules` subsection of `execution-guidance.md` rather than as a standalone document in the loop. Example constraints for this archetype: every error message must tell the operator what to do next; help text must describe all supported invocation modes.
 - For product archetypes (frontend apps, AI experiences with real end-user UX), a dedicated `ux-constraints.md` config key is warranted — that decision is deferred to when the first product archetype is designed.
+
+### 2026-04-24 — `frontend-backend-ai-app` is an officially supported V1 archetype
+
+- `frontend-backend-ai-app` joins `cli-doc-generator` as a named, in-scope V1 archetype for `raes-init`.
+- Both archetypes use the same 8-file output set and the same create-or-fail write contract.
+- Archetype-specific prompt and template differences are deferred to the slice that wires AI-derived generation for `frontend-backend-ai-app`; the current string-parsing fallbacks apply until then.
+
+### 2026-04-24 — V1 output set is exactly 8 files
+
+- The authoritative V1 output set for all supported archetypes is: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, `raes.config.yaml`.
+- Any default fallback content in `generate-docs.ts` (e.g. Known Contracts lists) must name all 8 files to remain consistent with this contract.
+- Any authoritative project doc (`system.md`, `raes.config.yaml`) that lists the output set must name all 8 files.

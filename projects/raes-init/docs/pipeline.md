@@ -216,10 +216,17 @@ A slice is complete only when:
   - Move `mkdir` call to immediately before the first `writeFile` call so directory creation and writes are co-located (Gap 8)
   - All existing tests continue to pass; no new failures introduced
 
-- [ ] Execution Slice B: Correct the project's own authoritative docs
+- [x] Execution Slice B: Correct the project's own authoritative docs
   - Add `validation: docs/validation.md` under `sources:` in `projects/raes-init/docs/raes.config.yaml` (Gap 4)
   - Update `system.md` Output Set and Write Rules sections to list all 8 output files (Gap 9)
   - Append a handoff note to `pipeline.md` clarifying that `decisions.md` and `execution-guidance.md` are stubs when no provider is used and must be filled out before the first execution slice runs (Gap 5)
+  - No implementation code changes; no test changes required
+
+- [ ] Add `projects/raes-init/docs/validation.md` and `projects/raes-init/docs/execution-guidance.md` to raes-init project
+  - Review `docs/raes-reference.md` and `projects/raes-init/docs/prd.md` and determine what sections are required for a validation file for raes-init
+  - Add `projects/raes-init/docs/validation.md` and populate it with required sections
+  - Review `docs/raes-reference.md` and `projects/raes-init/docs/prd.md` and determine what sections are required for a exeution-guidance file for raes-init
+  - Add `projects/raes-init/docs/execution-guidance.md` and populate it with required sections
   - No implementation code changes; no test changes required
 
 - [ ] Execution Slice C: Update `RAES_template.md`
@@ -260,3 +267,4 @@ A slice is complete only when:
 - 2026-04-24: Execution Slice 8.2 — AI-derived `decisions.md` and `execution-guidance.md`. Extended Slice 8.1 wiring: when `provider` is present and `prdPath` is set, `generateDocs()` calls `provider.complete(buildDecisionsPrompt(prdText))` and `provider.complete(buildExecutionGuidancePrompt(prdText))` to produce `decisions.md` and `execution-guidance.md` respectively. Shape guard (`validateGeneratedDocShape`) is applied to both AI outputs before the write loop so a missing-heading failure leaves the docs directory empty. Bare greenfield mode (no `prdPath`) and `--from-prd` without a provider fall back to stubs unchanged. `validation.md` remains a stub. 3 new tests added (24 total); all pass; typecheck clean. Next recommended: Execution Slice A — Fix `generate-docs.ts` (remove dead `extractPrdBullets`, update fallback Known Contracts to 8 files, move `mkdir` before first `writeFile`).
 - 2026-04-24: Review Slice — Gap decisions recorded and correction slices sequenced. Two new `decisions.md` entries added: `frontend-backend-ai-app` is an officially supported V1 archetype; the V1 output set is exactly 8 files and all default fallback content must reflect this. Three sequenced correction slices appended to this backlog as Milestone 9 (Slice A: fix `generate-docs.ts`; Slice B: correct project authoritative docs; Slice C: update `RAES_template.md`). Next recommended: Execution Slice A — Fix `generate-docs.ts` (remove dead `extractPrdBullets`, update fallback Known Contracts to 8 files, move `mkdir` before first `writeFile`).
 - 2026-04-24: Execution Slice A — `src/generate-docs.ts` cleanup completed. Removed dead `extractPrdBullets` and its unused call site. Updated the fallback `system.md` Known Contracts list to name the authoritative 8-file output set. Moved `mkdir(docsDirectory)` to immediately before the write loop so failed shape validation leaves no empty `docs/` directory behind. Added 2 tests: one locks the 8-file fallback list; one proves invalid AI `pipeline.md` output fails before the docs directory is created. All 33 tests pass; typecheck clean. Next recommended: Execution Slice B — Correct the project's own authoritative docs.
+- 2026-04-24: Execution Slice B — Corrected the project-owned authoritative docs to match the V1 schema and output contract. `projects/raes-init/docs/raes.config.yaml` now includes `sources.validation: docs/validation.md`. `projects/raes-init/docs/system.md` now lists the full 8-file output set and the create-or-fail write rules for `prd.md`, `execution-guidance.md`, `validation.md`, and `raes.config.yaml`. Clarification for operator handoff: when init runs without a provider, `decisions.md` and `execution-guidance.md` are bootstrap stubs and must be filled out before the first execution slice runs. No implementation code or tests changed. Next recommended: Execution Slice C — Update `RAES_template.md`.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -223,6 +223,28 @@ test('adapts PRD sections into project-specific constraints, known contracts, an
   assert.doesNotMatch(pipelineKnownContracts, /How much normalization should PRD.md apply/);
 
   assert.match(reviewOpenQuestions, /Should future versions accept inline PRD text/);
+});
+
+test('fallback system known contracts names all 8 generated files', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'fallback-contracts-tool');
+
+  await writeFile(sourcePrd, '# Fallback Contracts Tool\n', 'utf8');
+
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator'
+  });
+
+  const systemText = await readFile(join(targetProject, 'docs', 'system.md'), 'utf8');
+  const knownContracts = sectionBody(systemText, 'Known Contracts');
+
+  assert.match(
+    knownContracts,
+    /Generated files: `prd\.md`, `system\.md`, `pipeline\.md`, `decisions\.md`, `prd-ux-review\.md`, `execution-guidance\.md`, `validation\.md`, and `raes\.config\.yaml`\./
+  );
 });
 
 test('fails clearly when a generated doc shape omits required sections', () => {
@@ -609,6 +631,7 @@ test('rejects AI pipeline.md missing required headings before any writes', async
 
   const docsDir = join(targetProject, 'docs');
   await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
+  await assert.rejects(access(docsDir), 'docs directory should not be created before validation passes');
 });
 
 test('bare greenfield mode does not call provider even when provider is present', async () => {

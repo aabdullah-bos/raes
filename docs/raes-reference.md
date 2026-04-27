@@ -267,7 +267,37 @@ That design is deferred to when the first product archetype is implemented.
 
 ---
 
-## 9. Open Questions and Flagged Gaps
+## 9. Emergent Work
+
+**Emergent work** is work discovered during a slice that was not in the PRD or pipeline. It is distinct from the FLAG step.
+
+- **FLAG** — guidance is missing, conflicting, or ambiguous. May pause the slice.
+- **SURFACE** — new scope discovered. Captured in the Parking Lot. Does not pause the slice unless blocking.
+
+### Classification
+
+When work surfaces that was not planned, classify it immediately:
+
+| Classification | Criteria | Action |
+|----------------|----------|--------|
+| **Inline Fix** | <5 lines, no interface touched | Do it now in the current slice; note in handoff. No Parking Lot entry. |
+| **New Slice** | More lines or touches a contract; fits current milestone | Add Parking Lot entry. Promote to milestone backlog at REVIEW. |
+| **New Milestone** | Out of current milestone scope; 3–8 slices to complete | Add Parking Lot entry. Stub a new milestone section at REVIEW. |
+| **Sub-Project** | 5+ slices, own constraints and unknowns | Add Parking Lot entry. Create a subdirectory with its own `pipeline.md`; link from the Parking Lot row. |
+
+**If Blocking = Yes:** stop the current slice and raise at REVIEW. The next slice does not start until the item is promoted or dismissed.
+
+### Parking Lot
+
+A `## Parking Lot` section lives in `pipeline.md`, after all milestones. It holds a table of emergent items not yet promoted into the active backlog. At each REVIEW step, the operator promotes items (converts them to slice entries in the appropriate milestone) or dismisses them with a one-line note. Dismissed items remain in the table so the decision is visible.
+
+### Sub-Projects
+
+A sub-project gets its own subdirectory with a minimal `pipeline.md` (and `decisions.md` if decisions accumulate). It does not require the full eight-file RAES docs set unless it grows to that scale. The parent Parking Lot row links to the sub-project directory. The parent pipeline gains one integration verification slice that runs after the sub-project completes — because integration requires both contexts to be in scope simultaneously.
+
+---
+
+## 10. Open Questions and Flagged Gaps
 
 The following items are not yet decided or are inconsistent across existing artifacts. Each represents work that must happen before the affected part of RAES can be considered stable.
 

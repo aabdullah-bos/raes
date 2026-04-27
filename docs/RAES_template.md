@@ -275,6 +275,23 @@ In either case:
 
 ---
 
+## Parking Lot
+
+Items discovered during active slices. Operator promotes or dismisses at the next REVIEW step.
+
+| Issue | Discovered During | Blocking | Classification | Notes |
+|-------|------------------|----------|----------------|-------|
+| <title> | <slice name> | Yes/No | Inline Fix / New Slice / New Milestone / Sub-Project | <1-line description> |
+
+- **Inline Fix**: <5 lines, no interface touched → do it in the current slice, note in handoff. No entry needed.
+- **New Slice**: more lines or touches a contract, fits current milestone → promote to milestone backlog at REVIEW
+- **New Milestone**: out of current milestone scope, 3–8 slices → stub a new milestone section
+- **Sub-Project**: 5+ slices, own constraints/unknowns → create a subdirectory with its own `pipeline.md`, link from here
+
+If **Blocking = Yes**: stop the current slice and resolve at REVIEW before starting the next slice.
+
+---
+
 ## 7. Slice Reflection (Required)
 
 ## Slice Reflection

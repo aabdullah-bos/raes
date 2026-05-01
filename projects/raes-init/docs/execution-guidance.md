@@ -10,6 +10,31 @@
 
 ## Workflow Rules
 
+### Constraint Promotion
+
+When a decision during execution produces a durable constraint:
+1. Add the constraint to `system.md` (under Invariants, Drift Guards, or Contracts).
+2. Record the rationale in `decisions.md` with a reference to the `system.md` section where the constraint lives.
+
+The agent reads `system.md` for constraints; `decisions.md` only for rationale. This keeps the constraint surface small and stable.
+
+### Emergent Work
+
+When work is discovered during a slice that was not in the plan, classify it immediately:
+
+| Classification | Criteria | Action |
+|----------------|----------|--------|
+| **Inline Fix** | <5 lines, no interface touched | Do it now; note in handoff. No Parking Lot entry. |
+| **New Slice** | More lines or touches a contract; fits current milestone | Add Parking Lot entry. Promote at REVIEW. |
+| **New Milestone** | Out of scope; 3–8 slices to complete | Add Parking Lot entry. Stub a new milestone at REVIEW. |
+| **Sub-Project** | 5+ slices, own constraints and unknowns | Add Parking Lot entry. Create a subdirectory with its own `pipeline.md`. |
+
+If Blocking = Yes: stop the current slice and raise at REVIEW. The next slice does not start until the item is promoted or dismissed.
+
+Add all non-inline items to the `## Parking Lot` table in `pipeline.md`.
+
+### Execution Rules
+
 - Start by reading `raes.config.yaml`, then inspect the configured PRD, pipeline, decisions, and validation guidance before making changes.
 - Identify the first unchecked slice in `pipeline.md` and apply only the rules for that slice type.
 - For Execution Slices, write the smallest failing test first unless the slice explicitly states that no code path changes are required; in that case, add only the minimum validation needed to lock the artifact in place.

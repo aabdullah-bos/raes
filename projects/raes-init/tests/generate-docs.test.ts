@@ -305,6 +305,13 @@ test('generates execution-guidance.md with required sections', async () => {
   assert.match(guidanceText, /## Workflow Rules/);
   assert.match(guidanceText, /## Anti-Patterns/);
   assert.match(guidanceText, /## Definition of Done/);
+  assert.match(guidanceText, /### Constraint Promotion/);
+  assert.match(guidanceText, /### Emergent Work/);
+  assert.match(guidanceText, /system\.md/);
+  assert.match(guidanceText, /decisions\.md/);
+  assert.match(guidanceText, /Parking Lot/);
+  assert.match(guidanceText, /Inline Fix/);
+  assert.match(guidanceText, /Blocking = Yes/);
 });
 
 test('generates validation.md with required sections', async () => {

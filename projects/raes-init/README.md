@@ -70,7 +70,7 @@ Repeat.
 raes-init <target-project-path> cli-doc-generator
 ```
 
-Generates stub docs with section structure and no content. Fill in the stubs before running the first slice.
+Generates docs with section structure. `## Workflow Rules` is pre-populated with RAES system rules (constraint promotion, emergent work). Fill in the project-specific stubs (`## Invariants`, `## Anti-Patterns`, `## Definition of Done`) before running the first slice.
 
 ### PRD-seeded — you already have a PRD
 

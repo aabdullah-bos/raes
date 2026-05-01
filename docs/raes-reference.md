@@ -34,7 +34,41 @@ Workflow automation assumes known, repeatable processes. RAES is designed for th
 
 ---
 
-## 3. The Two Slice Types
+## 3. Artifact Responsibilities
+
+RAES uses three core truth artifacts. Each has one job. Keeping them single-purpose is what keeps truth small.
+
+| Artifact | Job | Answers |
+|----------|-----|---------|
+| **PRD** | Product intent for users | What are we building and why? |
+| **system.md** | Execution constraints | What must remain true in every future slice? |
+| **decisions.md** | Rationale audit trail | Why did we make a specific choice? |
+
+### What belongs where
+
+**PRD**
+- Yes: problem statement, target user, scope, success criteria, experience intent
+- No: implementation choices, framework selections, technical constraints
+
+**system.md**
+- Yes: invariants, drift guards, contracts, definitions of done, constraints promoted from decisions
+- No: rationale for why a constraint exists (that's decisions.md), product intent (that's the PRD)
+
+**decisions.md**
+- Yes: what was decided, why, alternatives considered, reference to where the resulting constraint lives in system.md
+- No: the constraint itself — once a decision produces a durable constraint, that constraint belongs in system.md
+
+### The promotion rule
+
+When a decision during execution produces a durable constraint:
+1. Add the constraint to `system.md` (under the appropriate section: Invariants, Drift Guards, or Contracts)
+2. Record the rationale in `decisions.md` with a reference to the system.md section where the constraint lives
+
+This keeps the execution loop's constraint surface small and stable. The agent reads `system.md` for what it must respect. It reads `decisions.md` only to understand why — not to extract constraints.
+
+---
+
+## 4. The Two Slice Types
 
 RAES supports two slice modes. Slice type determines execution rules. Forcing planning work through an execution loop produces bad outcomes — the agent either invents meaningless tests to satisfy the ritual or the slice becomes fuzzy and low-signal.
 
@@ -93,7 +127,7 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 ---
 
-## 4. Config Design Principle
+## 5. Config Design Principle
 
 > **RAES config should route execution to truth, not replace truth.**
 
@@ -113,7 +147,7 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 ---
 
-## 5. The Toolchain
+## 6. The Toolchain
 
 RAES has three tools. Each targets a different starting condition.
 
@@ -142,7 +176,7 @@ Current status: not yet implemented. The canonical prompt (Section 6) is the man
 
 ---
 
-## 6. The Canonical Prompt Structure
+## 7. The Canonical Prompt Structure
 
 The prompt structure separates three concerns:
 
@@ -220,7 +254,7 @@ In either case:
 
 ---
 
-## 7. The Human-in-the-Loop Position
+## 8. The Human-in-the-Loop Position
 
 RAES does not remove humans from the loop. It places humans on the critical path — at the moments where judgment is required — and delegates everything else to the system.
 
@@ -240,7 +274,7 @@ This position is a deliberate design choice, not a limitation. Software developm
 
 ---
 
-## 8. UX Concern Scoping
+## 9. UX Concern Scoping
 
 UX concerns in RAES are not uniform — how they are handled depends on the archetype.
 
@@ -267,7 +301,7 @@ That design is deferred to when the first product archetype is implemented.
 
 ---
 
-## 9. Emergent Work
+## 10. Emergent Work
 
 **Emergent work** is work discovered during a slice that was not in the PRD or pipeline. It is distinct from the FLAG step.
 
@@ -297,7 +331,7 @@ A sub-project gets its own subdirectory with a minimal `pipeline.md` (and `decis
 
 ---
 
-## 10. Open Questions and Flagged Gaps
+## 11. Open Questions and Flagged Gaps
 
 The following items are not yet decided or are inconsistent across existing artifacts. Each represents work that must happen before the affected part of RAES can be considered stable.
 

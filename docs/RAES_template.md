@@ -159,6 +159,8 @@ Example:
 - Clear transitions
 - Focused interaction
 
+Does not contain implementation choices or technical constraints — those belong in system.md.
+
 ---
 
 ## 3. PRD UX Interrogation
@@ -222,6 +224,8 @@ Examples:
 
 ### Definition of Done
 Define what must be true before a slice is considered complete.
+
+Constraints promoted from decisions.md belong here; rationale for those constraints stays in decisions.md.
 
 ---
 
@@ -377,6 +381,8 @@ Record:
 - Why
 - Alternatives considered
 - Patterns emerging
+
+When a decision produces a durable constraint, add the constraint to system.md and reference it here. decisions.md holds the rationale, not the constraint.
 
 ---
 

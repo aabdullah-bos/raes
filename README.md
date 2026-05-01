@@ -109,7 +109,7 @@ A RAES project creates a `/docs` directory:
   prd.md                     # What are we building?
   system.md                  # What must remain true?
   pipeline.md                # What are we doing next?
-  decisions.md               # What have we learned?
+  decisions.md               # Why did we make each choice?
   prd-ux-review.md           # Where is UX ambiguous?
   execution-guidance.md      # How should slices be executed?
   validation.md              # How do we verify correctness?
@@ -186,7 +186,7 @@ Execution rules:
 
 For projects without `raes.config.yaml`, inspect the repository for authoritative artifacts and treat what you find as the available truth.
 
-See `docs/raes-reference.md` Section 6 for the full canonical prompt forms for both slice types.
+See `docs/raes-reference.md` Section 7 for the full canonical prompt forms for both slice types.
 
 ---
 

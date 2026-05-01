@@ -64,7 +64,7 @@ Generates docs adapted from the source PRD. The PRD is copied verbatim to
 - PRD input must be a readable file path — inline text is not supported
 - Target output is one project-local `docs/` directory
 - Archetype must be explicitly specified — auto-detection is not supported
-- Supported archetype: `cli-doc-generator`
+- Supported archetypes: `cli-doc-generator`, `frontend-backend-ai-app`, `cli`
 
 ---
 

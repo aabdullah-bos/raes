@@ -207,11 +207,12 @@ This is the source of truth for:
 
 RAES supports example-based initialization using common project shapes:
 
+- cli-doc-generator *(used to build raes-init)*
 - frontend-backend-ai-app
-- ai-chat-experience
-- ai-game-loop
-- web-app-no-ai
-- cli-doc-generator *(used to build raes-init)
+- cli *(general-purpose operational CLI tools)*
+- ai-chat-experience *(planned)*
+- ai-game-loop *(planned)*
+- web-app-no-ai *(planned)*
 
 These provide:
 - default system rules

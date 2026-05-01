@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { Provider } from './provider.ts';
 
-export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app'] as const;
+export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app', 'cli'] as const;
 export type SupportedArchetype = (typeof SUPPORTED_ARCHETYPES)[number];
 
 const REQUIRED_DOC_NAMES = [
@@ -276,6 +276,9 @@ function renderSystemDoc(
   if (archetype === 'frontend-backend-ai-app') {
     return renderSystemDocFrontendBackendAiApp(projectName, prdTitle, prdSections);
   }
+  if (archetype === 'cli') {
+    return renderSystemDocCli(projectName, prdTitle, prdSections);
+  }
   return renderSystemDocCliDocGenerator(projectName, prdTitle, prdSections);
 }
 
@@ -417,6 +420,80 @@ function renderSystemDocFrontendBackendAiApp(
   ].join('\n');
 }
 
+function renderSystemDocCli(
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  const productInvariants = renderBullets(prdSections.constraints, [
+    'The tool must behave predictably given the same configuration and state.',
+    'Configuration validation must complete before any side effects begin.',
+    'The tool must exit with a non-zero code on any failure.',
+    'Partial state mutations must be detectable or must not occur.'
+  ]);
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
+    'Configuration file path and schema must be explicit before any reads are implemented.',
+    'Exit code assignments must be recorded in `decisions.md` when introduced.',
+    'External system interactions must go through an explicit adapter or service boundary.',
+    'State files written or modified by the tool must have an explicit format and write behavior.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'Exact configuration schema and required vs optional keys.',
+    'Retry and timeout behavior for external calls.',
+    'How partial failures are surfaced and recovered from.',
+    'Whether the tool maintains local state between invocations.',
+    'Logging verbosity and output format.'
+  ]);
+
+  return [
+    `# ${projectName} — system.md`,
+    '',
+    '## Purpose',
+    '',
+    `This document defines the execution rules for \`${projectName}\`.`,
+    '',
+    `The project is initialized from the PRD \`${prdTitle}\` using the \`cli\` archetype.`,
+    '',
+    '## Product Invariants',
+    '',
+    productInvariants,
+    '',
+    '## Drift Guards',
+    '',
+    '- Command parsing, business logic, and I/O are separate layers. Do not conflate them.',
+    '- Configuration is read once at startup and validated before any side effects begin.',
+    '- Do not widen the command surface beyond what the current slice requires.',
+    '- One slice per session. Stop after completing the slice.',
+    '- Exit codes are a contract. Do not change them once established without an explicit decision.',
+    '',
+    '## Known Contracts',
+    '',
+    knownContracts,
+    '',
+    '## Unknowns',
+    '',
+    unknowns,
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Do not mix command parsing with business logic.',
+    '- Do not read configuration after side effects have begun.',
+    '- Do not introduce external adapters or providers speculatively.',
+    '- Do not let exit code assignments become implicit — always record them explicitly.',
+    '- Do not blur temporary scaffold code and durable command contracts.',
+    '',
+    '## Definition of Done',
+    '',
+    '1. The exact slice was named explicitly.',
+    '2. Failing tests were written or updated first.',
+    '3. The minimum implementation required for the slice was completed.',
+    '4. Relevant tests and typecheck passed.',
+    '5. Exit codes and config schema decisions are recorded in `decisions.md`.',
+    '6. Any durable decision was recorded in `decisions.md`.',
+    ''
+  ].join('\n');
+}
+
 function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): string {
   return [
     `You are generating a RAES pipeline.md for a software project.`,
@@ -493,6 +570,9 @@ function renderPipelineDoc(
 ): string {
   if (archetype === 'frontend-backend-ai-app') {
     return renderPipelineDocFrontendBackendAiApp(projectName, prdTitle, prdSections);
+  }
+  if (archetype === 'cli') {
+    return renderPipelineDocCli(projectName, prdTitle, prdSections);
   }
   return renderPipelineDocCliDocGenerator(projectName, prdTitle, prdSections);
 }
@@ -627,6 +707,93 @@ function renderPipelineDocFrontendBackendAiApp(
   ].join('\n');
 }
 
+function renderPipelineDocCli(
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  const knownContracts = renderBullets(prdSections.coreFunctionality, [
+    'Configuration file path and schema must be explicit before execution begins.',
+    'Exit code assignments are a contract — record them when introduced.',
+    'External system adapter boundary must be explicit.',
+    'State file write behavior must be defined before implementation.'
+  ]);
+  const unknowns = renderBullets(prdSections.openQuestions, [
+    'Exact configuration schema and required keys.',
+    'Retry and timeout behavior for external calls.',
+    'Partial failure detection and recovery strategy.',
+    'Logging verbosity and output format.'
+  ]);
+
+  return [
+    `# ${projectName} — pipeline.md`,
+    '',
+    '## Purpose',
+    '',
+    `This pipeline defines the execution path for \`${projectName}\` based on the PRD \`${prdTitle}\`.`,
+    '',
+    '## Invariants',
+    '',
+    '### Product Invariants',
+    '',
+    '- The tool must behave predictably given the same configuration and state.',
+    '- Configuration validation must complete before any side effects begin.',
+    '- The tool must exit with a non-zero code on any failure.',
+    '- Partial state mutations must be detectable and recoverable.',
+    '',
+    '### Drift Guards',
+    '',
+    '- One slice per session.',
+    '- Tests before implementation.',
+    '- Command parsing, business logic, and I/O remain separate layers.',
+    '- Exit codes are a contract — record them in `decisions.md` when introduced.',
+    '- Do not use live external calls in deterministic tests by default.',
+    '- Stop after slice completion.',
+    '',
+    '## Known Contracts',
+    '',
+    knownContracts,
+    '',
+    '## Unknowns',
+    '',
+    unknowns,
+    '',
+    '## Slice Backlog',
+    '',
+    '### Milestone 1 — Configuration and Entry Point',
+    '',
+    '- [ ] Slice 1: Establish the CLI entry point with command parsing.',
+    '- [ ] Slice 2: Define and load the configuration file schema.',
+    '- [ ] Slice 3: Validate configuration and fail fast on missing or invalid keys.',
+    '',
+    '### Milestone 2 — Happy Path Without Live External Calls',
+    '',
+    '- [ ] Slice 4: Implement the core command flow against deterministic stubbed dependencies.',
+    '- [ ] Slice 5: Establish the adapter boundary for each external system.',
+    '- [ ] Slice 6: Verify state reads and writes against the defined schema.',
+    '- [ ] Slice 7: Confirm exit code behavior on success and known failure cases.',
+    '',
+    '### Milestone 3 — Core Execution Loop',
+    '',
+    '- [ ] Slice 8: Implement the primary business logic loop from the PRD.',
+    '- [ ] Slice 9: Add validation for major state transitions.',
+    '',
+    '### Milestone 4 — Real External Integration',
+    '',
+    '- [ ] Slice 10: Connect the adapter layer to the real external system.',
+    '- [ ] Slice 11: Handle timeout, retry, and failure behavior.',
+    '',
+    '### Milestone 5 — Polish and Hardening',
+    '',
+    '- [ ] Slice 12: Resolve major Unknowns that surfaced during execution.',
+    '- [ ] Slice 13: Tighten exit code contracts and error messages.',
+    '- [ ] Slice 14: Review PRD, operator experience notes, and decisions for drift.',
+    '',
+    '## Handoff Notes',
+    ''
+  ].join('\n');
+}
+
 function renderDecisionsDoc(projectName: string): string {
   return [
     `# ${projectName} — decisions.md`,
@@ -722,6 +889,9 @@ function renderPrdUxReview(
   if (archetype === 'frontend-backend-ai-app') {
     return renderPrdUxReviewFrontendBackendAiApp(projectName, prdTitle, prdSections);
   }
+  if (archetype === 'cli') {
+    return renderPrdUxReviewCli(projectName, prdTitle, prdSections);
+  }
   return renderPrdUxReviewCliDocGenerator(projectName, prdTitle, prdSections);
 }
 
@@ -803,6 +973,75 @@ function renderPrdUxReviewFrontendBackendAiApp(
     openQuestions,
     ''
   ].join('\n');
+}
+
+function renderPrdUxReviewCli(
+  projectName: string,
+  prdTitle: string,
+  prdSections: PrdSections
+): string {
+  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
+    'The PRD should remain the source of truth for operator-facing behavior.'
+  ]);
+  const uxRisks = renderBullets(deriveCliToolUxRisks(prdSections), [
+    'Operators need a clear failure message when configuration is invalid or missing.',
+    'Exit codes must be documented and consistent across all failure modes.',
+    'Partial state mutations must be detectable — the operator must know whether to retry or recover.'
+  ]);
+  const openQuestions = renderBullets(prdSections.openQuestions, [
+    'Should the tool support a dry-run mode before performing side effects?',
+    'What is the expected output format for success and failure (structured JSON vs human-readable)?',
+    'How should the operator be informed when the tool is waiting on a slow external call?'
+  ]);
+
+  return [
+    `# ${projectName} — prd-ux-review.md`,
+    '',
+    '## Purpose',
+    '',
+    `This review captures operator experience ambiguity and risk for \`${projectName}\` based on \`${prdTitle}\`.`,
+    '',
+    '## Observed Requirements',
+    '',
+    observedRequirements,
+    '',
+    '## UX Risks',
+    '',
+    uxRisks,
+    '',
+    '## Open Questions',
+    '',
+    openQuestions,
+    ''
+  ].join('\n');
+}
+
+function deriveCliToolUxRisks(prdSections: PrdSections): string[] {
+  const sourceBullets = [...prdSections.coreFunctionality, ...prdSections.constraints];
+  const normalized = sourceBullets.map((b) => b.toLowerCase());
+  const risks: string[] = [];
+
+  if (normalized.some((b) => b.includes('config') || b.includes('yaml') || b.includes('setting'))) {
+    risks.push('Operators need a clear error when required configuration keys are missing or have invalid values.');
+  }
+
+  if (normalized.some((b) => b.includes('exit') || b.includes('code') || b.includes('error'))) {
+    risks.push('Operators need a consistent, documented exit code for each known failure mode.');
+  }
+
+  if (normalized.some((b) => b.includes('state') || b.includes('pipeline') || b.includes('checkpoint'))) {
+    risks.push('Operators need to know whether a partial execution left state in an inconsistent condition.');
+  }
+
+  if (normalized.some((b) => b.includes('ai') || b.includes('provider') || b.includes('model') || b.includes('api'))) {
+    risks.push('Operators need a clear error when the external provider is unreachable or returns an unexpected response.');
+  }
+
+  if (normalized.some((b) => b.includes('file') || b.includes('path') || b.includes('read') || b.includes('write'))) {
+    risks.push('Operators need a clear failure message when a required file cannot be read or written.');
+  }
+
+  return risks;
 }
 
 function deriveProductUxRisks(prdSections: PrdSections): string[] {

@@ -74,4 +74,4 @@ A complete archetype for `raes-init` V1 must provide:
 - `system.template.md` — rules, invariants, anti-patterns, and definition of done applicable to this project shape
 - `pipeline.template.md` — suggested milestones and execution structure for this project shape
 
-The contract between archetypes and `raes-init`'s generation logic will be formalized before a second archetype is implemented. At that point, the archetype directory structure and required files will be specified here.
+The contract is now established across three archetypes (`cli-doc-generator`, `frontend-backend-ai-app`, `cli`). Each archetype directory contains exactly `README.md`, `system.template.md`, and `pipeline.template.md`. Generation logic for each archetype is hardcoded in `projects/raes-init/src/generate-docs.ts`.

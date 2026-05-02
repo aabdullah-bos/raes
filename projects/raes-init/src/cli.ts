@@ -71,7 +71,13 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   try {
-    await generateDocs({ prdPath, targetProjectPath, archetype, provider });
+    await generateDocs({
+      prdPath,
+      targetProjectPath,
+      archetype,
+      provider,
+      log: (msg: string) => process.stdout.write(msg + '\n')
+    });
     return 0;
   } catch (error) {
     if (error instanceof GenerationError) {

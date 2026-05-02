@@ -809,6 +809,7 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   assert.equal(decisionsText, mockDecisionsContent);
   assert.equal(guidanceText, mockExecutionGuidanceContent);
   assert.match(capturedDecisionsPrompt, /AI Decisions Tool/);
+  assert.match(capturedDecisionsPrompt, /\d{4}-\d{2}-\d{2}/);
   assert.match(capturedGuidancePrompt, /AI Decisions Tool/);
   assert.equal(callCount, 3);
 

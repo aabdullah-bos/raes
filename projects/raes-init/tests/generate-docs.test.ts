@@ -951,6 +951,75 @@ test('rejects AI execution-guidance.md missing required headings before any writ
   await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
 });
 
+test('when prdPath is already the target docs/prd.md, it leaves it unchanged and generates all other files', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'raes-execute');
+  const docsDir = join(targetProject, 'docs');
+  const targetPrdPath = join(docsDir, 'prd.md');
+
+  await mkdir(docsDir, { recursive: true });
+  const originalPrdContent = [
+    '# raes-execute',
+    '',
+    '## Core Functionality',
+    '',
+    '- Execute RAES slices.',
+    ''
+  ].join('\n');
+  await writeFile(targetPrdPath, originalPrdContent, 'utf8');
+
+  const generated = await generateDocs({
+    prdPath: targetPrdPath,
+    targetProjectPath: targetProject,
+    archetype: 'cli'
+  });
+
+  assert.deepEqual(generated, [
+    join(docsDir, 'prd.md'),
+    join(docsDir, 'system.md'),
+    join(docsDir, 'pipeline.md'),
+    join(docsDir, 'decisions.md'),
+    join(docsDir, 'prd-ux-review.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md'),
+    join(docsDir, 'raes.config.yaml')
+  ]);
+
+  const prdText = await readFile(targetPrdPath, 'utf8');
+  assert.equal(prdText, originalPrdContent, 'prd.md must remain unchanged');
+
+  const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
+  assert.match(systemText, /# raes-execute/);
+
+  const configText = await readFile(join(docsDir, 'raes.config.yaml'), 'utf8');
+  assert.match(configText, /build_intent: docs\/prd\.md/);
+});
+
+test('when prdPath is the target docs/prd.md, conflict check still rejects other pre-existing files', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'raes-execute-conflict');
+  const docsDir = join(targetProject, 'docs');
+  const targetPrdPath = join(docsDir, 'prd.md');
+
+  await mkdir(docsDir, { recursive: true });
+  await writeFile(targetPrdPath, '# raes-execute-conflict\n', 'utf8');
+  await writeFile(join(docsDir, 'system.md'), 'existing system', 'utf8');
+
+  await assert.rejects(
+    generateDocs({
+      prdPath: targetPrdPath,
+      targetProjectPath: targetProject,
+      archetype: 'cli'
+    }),
+    {
+      name: 'Error',
+      message: `conflicting target file: ${join(docsDir, 'system.md')}`
+    }
+  );
+
+  assert.equal(await readFile(targetPrdPath, 'utf8'), '# raes-execute-conflict\n');
+});
+
 test('generates the RAES docs set for the cli archetype', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
   const sourcePrd = join(tempRoot, 'source-prd.md');

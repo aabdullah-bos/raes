@@ -1004,7 +1004,7 @@ test('generates the RAES docs set for the cli archetype', async () => {
   assert.match(systemText, /## Product Invariants/);
   assert.match(systemText, /## Known Contracts/);
   assert.match(systemText, /## Unknowns/);
-  assert.match(systemText, /cli/);
+  assert.match(systemText, /using the `?cli`? archetype/i);
   assert.doesNotMatch(systemText, /cli-doc-generator/);
 
   const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');

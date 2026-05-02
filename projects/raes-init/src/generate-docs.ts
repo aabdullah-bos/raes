@@ -54,6 +54,7 @@ export type GenerateDocsInput = {
   targetProjectPath: string;
   archetype: string;
   provider?: Provider;
+  log?: (message: string) => void;
 };
 
 type PrdSections = {
@@ -66,7 +67,8 @@ export async function generateDocs({
   prdPath,
   targetProjectPath,
   archetype,
-  provider
+  provider,
+  log
 }: GenerateDocsInput): Promise<string[]> {
   validateRequiredInput('target project path', targetProjectPath);
   validateRequiredInput('archetype', archetype);
@@ -115,9 +117,11 @@ export async function generateDocs({
   // Shape guard runs here so validation fails before any writes.
   let pipelineMdContent: string;
   if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating pipeline.md...');
     const prompt = buildPipelinePrompt(prdText, resolvedArchetype);
     pipelineMdContent = await provider.complete(prompt);
     validateGeneratedDocShape('pipeline.md', REQUIRED_DOC_HEADINGS['pipeline.md'] ?? [], pipelineMdContent);
+    log?.('pipeline.md done');
   } else {
     pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections);
   }
@@ -126,10 +130,12 @@ export async function generateDocs({
   // Shape guard runs here so validation fails before any writes.
   let decisionsMdContent: string;
   if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating decisions.md...');
     const todayDate = new Date().toISOString().slice(0, 10);
     const prompt = buildDecisionsPrompt(prdText, todayDate);
     decisionsMdContent = await provider.complete(prompt);
     validateGeneratedDocShape('decisions.md', REQUIRED_DOC_HEADINGS['decisions.md'] ?? [], decisionsMdContent);
+    log?.('decisions.md done');
   } else {
     decisionsMdContent = renderDecisionsDoc(projectName);
   }
@@ -138,9 +144,11 @@ export async function generateDocs({
   // Shape guard runs here so validation fails before any writes.
   let executionGuidanceMdContent: string;
   if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating execution-guidance.md...');
     const prompt = buildExecutionGuidancePrompt(prdText);
     executionGuidanceMdContent = await provider.complete(prompt);
     validateGeneratedDocShape('execution-guidance.md', REQUIRED_DOC_HEADINGS['execution-guidance.md'] ?? [], executionGuidanceMdContent);
+    log?.('execution-guidance.md done');
   } else {
     executionGuidanceMdContent = renderExecutionGuidanceDoc(projectName);
   }
@@ -156,6 +164,7 @@ export async function generateDocs({
     ['raes.config.yaml', renderRaesConfig(projectName)]
   ]);
 
+  log?.(`Writing docs to ${docsDirectory}...`);
   await mkdir(docsDirectory, { recursive: true });
 
   for (const outputPath of outputPaths) {
@@ -169,6 +178,7 @@ export async function generateDocs({
     }
     validateGeneratedDocShape(fileName, REQUIRED_DOC_HEADINGS[fileName] ?? [], content);
     await writeFile(outputPath, content, 'utf8');
+    log?.(`  ${fileName}`);
   }
 
   return outputPaths;

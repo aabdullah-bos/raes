@@ -1089,3 +1089,89 @@ test('generates the RAES docs set for the cli archetype', async () => {
   assert.match(reviewText, /## Open Questions/);
   assert.match(reviewText, /Should the tool support a dry-run mode/);
 });
+
+test('emits progress messages for AI-backed --from-prd generation', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'progress-tool');
+
+  await writeFile(
+    sourcePrd,
+    ['# Progress Tool', '', '## Core Functionality', '', '- Process input.'].join('\n'),
+    'utf8'
+  );
+
+  const mockPipelineContent = [
+    '# Progress Tool — pipeline.md',
+    '', '## Purpose', '', 'Pipeline.', '', '## Invariants', '', '- Invariant.',
+    '', '## Known Contracts', '', '- Contract.', '', '## Unknowns', '', '- TBD.',
+    '', '## Slice Backlog', '', '- [ ] Slice 1: Initial implementation.',
+    '', '## Handoff Notes', ''
+  ].join('\n');
+
+  const mockDecisionsContent = [
+    '# Progress Tool — decisions.md', '', '## Durable Decisions', '',
+    '| Decision | Rationale | Date |', '|---|---|---|', ''
+  ].join('\n');
+
+  const mockExecutionGuidanceContent = [
+    '# Progress Tool — execution-guidance.md',
+    '', '## Invariants', '', '- Invariant.', '', '## Workflow Rules', '', '- Rule.',
+    '', '## Anti-Patterns', '', '- Anti.', '', '## Definition of Done', '', '- Done.', ''
+  ].join('\n');
+
+  let callCount = 0;
+  const mockProvider = {
+    async complete(_prompt: string): Promise<string> {
+      callCount += 1;
+      if (callCount === 1) return mockPipelineContent;
+      if (callCount === 2) return mockDecisionsContent;
+      return mockExecutionGuidanceContent;
+    }
+  };
+
+  const logMessages: string[] = [];
+  await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator',
+    provider: mockProvider,
+    log: (msg) => logMessages.push(msg)
+  });
+
+  assert(logMessages.includes('Generating pipeline.md...'), 'should log before pipeline AI call');
+  assert(logMessages.includes('pipeline.md done'), 'should log after pipeline AI call');
+  assert(logMessages.includes('Generating decisions.md...'), 'should log before decisions AI call');
+  assert(logMessages.includes('decisions.md done'), 'should log after decisions AI call');
+  assert(logMessages.includes('Generating execution-guidance.md...'), 'should log before guidance AI call');
+  assert(logMessages.includes('execution-guidance.md done'), 'should log after guidance AI call');
+
+  assert(logMessages.some((m) => m.startsWith('Writing docs to')), 'should log before writes');
+  assert(logMessages.includes('  prd.md'), 'should log prd.md write');
+  assert(logMessages.includes('  system.md'), 'should log system.md write');
+  assert(logMessages.includes('  pipeline.md'), 'should log pipeline.md write');
+  assert(logMessages.includes('  raes.config.yaml'), 'should log raes.config.yaml write');
+
+  const pipelineGenIdx = logMessages.indexOf('Generating pipeline.md...');
+  const writingIdx = logMessages.findIndex((m) => m.startsWith('Writing docs to'));
+  assert(pipelineGenIdx < writingIdx, 'AI progress should precede write phase');
+});
+
+test('emits write-phase progress messages in bare greenfield mode', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const targetProject = join(tempRoot, 'greenfield-progress-tool');
+
+  const logMessages: string[] = [];
+  await generateDocs({
+    targetProjectPath: targetProject,
+    archetype: 'cli-doc-generator',
+    log: (msg) => logMessages.push(msg)
+  });
+
+  assert(logMessages.some((m) => m.startsWith('Writing docs to')), 'should log before writes');
+  assert(logMessages.includes('  prd.md'), 'should log prd.md write');
+  assert(logMessages.includes('  system.md'), 'should log system.md write');
+  assert(logMessages.includes('  pipeline.md'), 'should log pipeline.md write');
+  assert(logMessages.includes('  raes.config.yaml'), 'should log raes.config.yaml write');
+  assert(!logMessages.includes('Generating pipeline.md...'), 'should not log AI progress in bare mode');
+});

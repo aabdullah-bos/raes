@@ -95,7 +95,7 @@ test('rejects unsupported archetypes without writing files', async () => {
     }),
     {
       name: 'Error',
-      message: 'unsupported archetype: unknown-archetype (supported: cli-doc-generator, frontend-backend-ai-app)'
+      message: 'unsupported archetype: unknown-archetype (supported: cli-doc-generator, frontend-backend-ai-app, cli)'
     }
   );
 });
@@ -949,4 +949,73 @@ test('rejects AI execution-guidance.md missing required headings before any writ
 
   const docsDir = join(targetProject, 'docs');
   await assert.rejects(readFile(join(docsDir, 'prd.md'), 'utf8'), 'no files should be written');
+});
+
+test('generates the RAES docs set for the cli archetype', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
+  const sourcePrd = join(tempRoot, 'source-prd.md');
+  const targetProject = join(tempRoot, 'raes-execute');
+
+  await writeFile(
+    sourcePrd,
+    [
+      '# raes-execute',
+      '',
+      '## Core Functionality',
+      '',
+      '- Read raes.config.yaml to locate project artifacts.',
+      '- Select the next unchecked slice from pipeline.md.',
+      '- Call an AI provider to execute the slice.',
+      '- Write updated state back to pipeline.md.',
+      '',
+      '## Constraints',
+      '',
+      '- Configuration must be validated before any execution begins.',
+      '- The tool must exit with a non-zero code on any failure.',
+      '',
+      '## Open Questions',
+      '',
+      '- Should the tool support a dry-run mode?',
+      '- What logging format is expected?'
+    ].join('\n'),
+    'utf8'
+  );
+
+  const generated = await generateDocs({
+    prdPath: sourcePrd,
+    targetProjectPath: targetProject,
+    archetype: 'cli'
+  });
+
+  const docsDir = join(targetProject, 'docs');
+  assert.deepEqual(generated, [
+    join(docsDir, 'prd.md'),
+    join(docsDir, 'system.md'),
+    join(docsDir, 'pipeline.md'),
+    join(docsDir, 'decisions.md'),
+    join(docsDir, 'prd-ux-review.md'),
+    join(docsDir, 'execution-guidance.md'),
+    join(docsDir, 'validation.md'),
+    join(docsDir, 'raes.config.yaml')
+  ]);
+
+  const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
+  assert.match(systemText, /# raes-execute/);
+  assert.match(systemText, /## Product Invariants/);
+  assert.match(systemText, /## Known Contracts/);
+  assert.match(systemText, /## Unknowns/);
+  assert.match(systemText, /using the `?cli`? archetype/i);
+  assert.doesNotMatch(systemText, /cli-doc-generator/);
+
+  const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
+  assert.match(pipelineText, /# raes-execute/);
+  assert.match(pipelineText, /## Slice Backlog/);
+  assert.match(pipelineText, /\[ \] Slice 1/);
+  assert.match(pipelineText, /Milestone 1/);
+  assert.match(pipelineText, /Milestone 5/);
+
+  const reviewText = await readFile(join(docsDir, 'prd-ux-review.md'), 'utf8');
+  assert.match(reviewText, /# raes-execute/);
+  assert.match(reviewText, /## Open Questions/);
+  assert.match(reviewText, /Should the tool support a dry-run mode/);
 });

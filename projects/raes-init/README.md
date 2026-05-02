@@ -29,7 +29,7 @@ You need **constraints + structure + controlled execution**.
 Given:
 - a greenfield project or a PRD (`.md`) with no implementation
 - a target project path
-- an archetype (currently `cli-doc-generator`)
+- an archetype (`cli-doc-generator`, `frontend-backend-ai-app`, or `cli`)
 
 It generates a complete RAES docs set:
 
@@ -143,7 +143,7 @@ A system for making AI behave like a disciplined engineer.
 ## Current scope
 
 - Greenfield or Single PRD input
-- Single archetype: cli-doc-generator (Using raes to build raes)
+- Three archetypes: `cli-doc-generator` (used to build raes-init), `frontend-backend-ai-app`, `cli`
 - Create-or-fail writes
 - Docs-only output (8 files, including `raes.config.yaml`)
 - TypeScript / Node.js runtime

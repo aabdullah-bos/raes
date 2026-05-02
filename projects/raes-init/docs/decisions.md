@@ -84,6 +84,13 @@
 - Both archetypes use the same 8-file output set and the same create-or-fail write contract.
 - Archetype-specific prompt and template differences are deferred to the slice that wires AI-derived generation for `frontend-backend-ai-app`; the current string-parsing fallbacks apply until then.
 
+### 2026-05-01 — `cli` is an officially supported V1 archetype
+
+- `cli` joins `cli-doc-generator` and `frontend-backend-ai-app` as a named, in-scope V1 archetype for `raes-init`.
+- The `cli` archetype is for general-purpose operational CLI tools that read configuration, manage state, and interact with external systems — distinct from `cli-doc-generator`, which is scoped to CLIs that generate docs from a PRD.
+- All three archetypes use the same 8-file output set and the same create-or-fail write contract.
+- The `cli` archetype pipeline generates a 5-milestone, 14-slice backlog: config + entry point → happy path without live external calls → core execution loop → real external integration → polish and hardening.
+
 ### 2026-04-24 — V1 output set is exactly 8 files
 
 - The authoritative V1 output set for all supported archetypes is: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, `raes.config.yaml`.

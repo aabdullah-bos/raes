@@ -126,7 +126,8 @@ export async function generateDocs({
   // Shape guard runs here so validation fails before any writes.
   let decisionsMdContent: string;
   if (provider !== undefined && prdPath !== undefined) {
-    const prompt = buildDecisionsPrompt(prdText);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const prompt = buildDecisionsPrompt(prdText, todayDate);
     decisionsMdContent = await provider.complete(prompt);
     validateGeneratedDocShape('decisions.md', REQUIRED_DOC_HEADINGS['decisions.md'] ?? [], decisionsMdContent);
   } else {
@@ -533,7 +534,7 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
   ].join('\n');
 }
 
-function buildDecisionsPrompt(prdText: string): string {
+function buildDecisionsPrompt(prdText: string, todayDate: string): string {
   return [
     `You are generating a RAES decisions.md for a software project.`,
     ``,
@@ -546,6 +547,7 @@ function buildDecisionsPrompt(prdText: string): string {
     ``,
     `Under ## Durable Decisions, include a markdown table with columns: Decision | Rationale | Date.`,
     `Each row should capture one durable decision grounded in the PRD.`,
+    `Use ${todayDate} as the date for all decision entries.`,
     ``,
     `Do not fabricate decisions not supported by the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --experimental-strip-types
-import { generateDocs, GenerationError } from './generate-docs.ts';
+import { generateDocs, GenerationError, SUPPORTED_ARCHETYPES } from './generate-docs.ts';
 import { loadProvider, ProviderError, type Provider } from './provider.ts';
 import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -17,7 +17,7 @@ Modes:
 
 Arguments:
   target-project-path   Path to the target project directory
-  archetype             Execution shape (supported: cli-doc-generator)
+  archetype             Execution shape (supported: ${SUPPORTED_ARCHETYPES.join(', ')})
 
 Options:
   --from-prd <path>   Path to a readable PRD markdown file

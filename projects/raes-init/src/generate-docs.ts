@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import type { Provider } from './provider.ts';
 
 export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app', 'cli'] as const;
@@ -83,9 +83,17 @@ export async function generateDocs({
   const resolvedArchetype = archetype as SupportedArchetype;
 
   const docsDirectory = join(targetProjectPath, 'docs');
+  const targetPrdPath = join(docsDirectory, 'prd.md');
+  const prdIsAlreadyAtTarget =
+    prdPath !== undefined && resolve(prdPath) === resolve(targetPrdPath);
+
   const outputPaths = REQUIRED_DOC_NAMES.map((name) => join(docsDirectory, name));
 
-  await failIfOutputsExist(outputPaths);
+  const pathsToCheckForConflict = prdIsAlreadyAtTarget
+    ? outputPaths.filter((p) => basename(p) !== 'prd.md')
+    : outputPaths;
+
+  await failIfOutputsExist(pathsToCheckForConflict);
 
   const projectName = basename(targetProjectPath) || 'project';
 
@@ -151,6 +159,9 @@ export async function generateDocs({
 
   for (const outputPath of outputPaths) {
     const fileName = basename(outputPath);
+    if (prdIsAlreadyAtTarget && fileName === 'prd.md') {
+      continue;
+    }
     const content = generatedContent.get(fileName);
     if (!content) {
       throw new GenerationError(`missing generated content for ${fileName}`);

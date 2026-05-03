@@ -1,6 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { checkConfig } from './config.ts';
 
 const VERSION = '0.1.0';
 
@@ -41,6 +42,7 @@ const KNOWN_FLAGS = new Set([
 export interface IO {
   out?: (line: string) => void;
   err?: (line: string) => void;
+  cwd?: string;
 }
 
 export interface Result {
@@ -50,6 +52,7 @@ export interface Result {
 export async function main(argv: string[], io: IO = {}): Promise<Result> {
   const out = io.out ?? ((l) => process.stdout.write(l + '\n'));
   const err = io.err ?? ((l) => process.stderr.write(l + '\n'));
+  const cwd = io.cwd ?? process.cwd();
 
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     out(HELP);
@@ -73,6 +76,35 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       err(`       run 'raes-execute --help' for usage`);
       return { exitCode: 1 };
     }
+  }
+
+  if (argv.includes('--check-config') || argv.includes('-c')) {
+    const { errors, config } = checkConfig(cwd);
+    if (errors.length === 0 && config) {
+      const paths: Array<[string, string]> = [
+        ['sources.build_intent', config.sources.build_intent],
+        ['sources.next_slice', config.sources.next_slice.path],
+        ['sources.durable_decisions', config.sources.durable_decisions],
+        ['sources.execution_guidance', config.sources.execution_guidance],
+        ['sources.validation', config.sources.validation],
+      ];
+      const labelWidth = Math.max(...paths.map(([l]) => l.length));
+      for (const [label, path] of paths) {
+        out(`  ${label.padEnd(labelWidth)}  ${path}`);
+      }
+      out('');
+      out(`raes.config.yaml OK — ${paths.length} artifact paths verified.`);
+      return { exitCode: 0 };
+    }
+    for (const e of errors) {
+      err(`error: ${e.message}`);
+      err(`  field: ${e.field}`);
+      if (e.fix) err(`  fix:   ${e.fix}`);
+      err('');
+    }
+    const count = errors.length;
+    err(`${count} ${count === 1 ? 'error' : 'errors'} found. Fix the ${count === 1 ? 'issue' : 'issues'} above and re-run --check-config.`);
+    return { exitCode: 2 };
   }
 
   // All other known flags are unimplemented stubs — subcommands TBD

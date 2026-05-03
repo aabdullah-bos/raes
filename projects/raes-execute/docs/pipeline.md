@@ -75,11 +75,11 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 1: Scaffold CLI project and implement foundational command parser with --help, error-handling for missing/extra params, and support for short/long options (subcommands TBD).
 
-- [ ] Slice 2: Implement raes.config.yaml schema validation and file existence check; ensure all referenced artifact paths are present and readable; output actionable errors if config is invalid.
+- [x] Slice 2: Implement raes.config.yaml schema validation and file existence check; ensure all referenced artifact paths are present and readable; output actionable errors if config is invalid.
 
 - [ ] Slice 3: Build artifact loader module for prd.md, system.md, decisions.md, and config-defined custom artifacts; implement boundary validation to detect mixing of constraint/rationale/intent across artifact types.
 
-- [ ] Slice 4: Implement --check-config (-c) command to validate raes.config.yaml and all referenced artifacts; provide detailed output on any validation failures.
+- [ ] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
 
 - [ ] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.
 
@@ -116,6 +116,44 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 4 — 2026-05-03
+
+**Scope note:** Slice 4 was re-scoped from its original definition ("implement --check-config command") because Slice 2 had already delivered the command and its core validation logic. Slice 4 extended the output layer only: per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing.
+
+**`ConfigError.fix` added:** `src/config.ts` — `ConfigError` now has an optional `fix?: string` field. Every error emitted by `extractConfig`, `validatePaths`, and `checkConfig` populates `fix` with a one-line remediation action. Future slices that introduce new validation errors must also populate `fix`; a `ConfigError` without `fix` is incomplete.
+
+**`checkConfig` return type changed:** Was `ConfigError[]`; now `{ errors: ConfigError[]; config?: RaesConfig }`. On success, `config` is populated and `errors` is empty. On failure, `config` is `undefined`. Any future caller must destructure the result — direct array indexing on the return value will not compile. Recorded in `decisions.md`.
+
+**`--check-config` success output:** Lists all five verified artifact paths in a column-aligned table (field label → path), then the count summary line (`raes.config.yaml OK — 5 artifact paths verified.`). Written to `stdout`.
+
+**`--check-config` failure output:** One structured block per error to `stderr` — `error: <message>` / `  field: <field>` / `  fix: <guidance>` / blank line — followed by a summary line (`N error(s) found. Fix the issue(s) above and re-run --check-config.`).
+
+**36 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 4 is complete. The next unchecked slice is Slice 3 — artifact loader module for `prd.md`, `system.md`, `decisions.md`, and boundary validation. The `RaesConfig` type and `checkConfig` in `src/config.ts` are the natural starting point.
+
+---
+
+### Slice 2 — 2026-05-03
+
+**New module:** `src/config.ts` — exports `parseYaml`, `extractConfig`, `validatePaths`, `checkConfig`. All are pure-function or sync-only (uses `readFileSync`/`existsSync`); no external dependencies added.
+
+**YAML parser scope:** `parseYaml` is a minimal indent-based parser for the fixed `raes.config.yaml` schema (max 2 levels deep). It is not a general YAML parser. Values containing colons after the first are preserved correctly (e.g. `msg: error: foo` → `{msg: 'error: foo'}`). Do not extend it to handle multi-line values, lists, or anchors without adding a proper YAML library.
+
+**`IO.cwd` added:** The `IO` interface in `src/cli.ts` now includes `cwd?: string` (defaults to `process.cwd()`). All future command handlers that need the project root must read `io.cwd` (resolved at the top of `main`) rather than calling `process.cwd()` directly — this is required for testability without spawning subprocesses.
+
+**Exit code 2 now live:** `--check-config` is the first command to return exit code 2 on failure. The reserved meaning (config/runtime errors) established in decisions.md is now in active use.
+
+**`--check-config` wired:** `-c`/`--check-config` now calls `checkConfig(cwd)` and exits 0 (success) or 2 (error). Existing stub infrastructure for other flags is unchanged.
+
+**Slice 4 overlap:** Slice 4 ("Implement --check-config command with detailed output") is now substantially satisfied by this slice. Slice 4 can be used to refine output formatting (color, icons, column-aligned error display) once Slice 18 output-formatting work is scoped, or it can be re-scoped or marked redundant.
+
+**34 tests, all passing; typecheck clean.**
+
+**Next operator:** Start Slice 3 — build the artifact loader module for `prd.md`, `system.md`, `decisions.md`, and config-defined custom artifacts; implement boundary validation. The `src/config.ts` types (`RaesConfig`, `ConfigError`) and `checkConfig` are the natural foundation; import and reuse them.
+
+---
 
 ### Slice 1 — 2026-05-03
 

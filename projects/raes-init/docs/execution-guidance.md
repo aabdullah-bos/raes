@@ -63,3 +63,17 @@ Add all non-inline items to the `## Parking Lot` table in `pipeline.md`.
 3. The create-or-fail contract, output set, and config-routed source map remain intact.
 4. `pipeline.md` is updated with the slice marked complete and a handoff note for the next session.
 5. `decisions.md` is updated only if the slice uncovered a new durable rule.
+
+## Milestone Guidance
+
+### Milestone 1: Core Generation
+
+Focus on establishing the complete 8-file output set, the create-or-fail write contract, and the archetype-specific template rendering. Validate all error paths before the happy path — generation correctness depends on early failure. The schema contract between `raes-init` output and `raes-execute` input must be stable before Milestone 2.
+
+### Milestone 2: AI-Seeded Generation
+
+The `--from-prd` provider path layers on top of a working Milestone 1. Keep AI and bare-mode paths clearly separated in generation logic; do not let provider-specific behavior leak into template rendering. Shape validation (`validateGeneratedDocShape`) is the safety boundary — expand it before expanding the AI prompt surface.
+
+### Milestone 3: Archetype Expansion
+
+Each new archetype must be proven against a real project before being promoted as supported. The archetype contract (what templates produce, what `raes-init` generates) must be documented in the archetype README before implementation begins.

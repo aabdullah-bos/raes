@@ -305,6 +305,7 @@ test('generates execution-guidance.md with required sections', async () => {
   assert.match(guidanceText, /## Workflow Rules/);
   assert.match(guidanceText, /## Anti-Patterns/);
   assert.match(guidanceText, /## Definition of Done/);
+  assert.match(guidanceText, /## Milestone Guidance/);
   assert.match(guidanceText, /### Constraint Promotion/);
   assert.match(guidanceText, /### Emergent Work/);
   assert.match(guidanceText, /system\.md/);
@@ -576,6 +577,12 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
     '## Definition of Done',
     '',
     '- All required docs generated.',
+    '',
+    '## Milestone Guidance',
+    '',
+    '### Milestone 1',
+    '',
+    '- Establish foundational scaffolding.',
     ''
   ].join('\n');
 
@@ -776,6 +783,12 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
     '## Definition of Done',
     '',
     '- All required docs generated.',
+    '',
+    '## Milestone Guidance',
+    '',
+    '### Milestone 1',
+    '',
+    '- Establish foundational scaffolding.',
     ''
   ].join('\n');
 
@@ -1117,7 +1130,8 @@ test('emits progress messages for AI-backed --from-prd generation', async () => 
   const mockExecutionGuidanceContent = [
     '# Progress Tool — execution-guidance.md',
     '', '## Invariants', '', '- Invariant.', '', '## Workflow Rules', '', '- Rule.',
-    '', '## Anti-Patterns', '', '- Anti.', '', '## Definition of Done', '', '- Done.', ''
+    '', '## Anti-Patterns', '', '- Anti.', '', '## Definition of Done', '', '- Done.',
+    '', '## Milestone Guidance', '', '### Milestone 1', '', '- Guidance.', ''
   ].join('\n');
 
   let callCount = 0;

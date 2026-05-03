@@ -77,7 +77,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 2: Implement raes.config.yaml schema validation and file existence check; ensure all referenced artifact paths are present and readable; output actionable errors if config is invalid.
 
-- [ ] Slice 3: Build artifact loader module for prd.md, system.md, decisions.md, and config-defined custom artifacts; implement boundary validation to detect mixing of constraint/rationale/intent across artifact types.
+- [x] Slice 3: Build artifact loader module for prd.md, system.md, decisions.md, and config-defined custom artifacts; implement boundary validation to detect mixing of constraint/rationale/intent across artifact types.
 
 - [ ] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
 
@@ -116,6 +116,24 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 3 — 2026-05-03
+
+**New module:** `src/artifacts.ts` — exports `ArtifactRole`, `Artifact`, `BoundaryViolation`, `loadArtifact`, `loadAllArtifacts`, `validateBoundaries`. All functions are sync; no external dependencies added.
+
+**`loadArtifact` return pattern:** Returns `{ artifact?, error? }` — same optional-result pattern used throughout the codebase. On success, `artifact` is set and `error` is `undefined`; on failure (file missing or unreadable), `error` is a human-readable string and `artifact` is `undefined`.
+
+**`loadAllArtifacts` return pattern:** Returns `{ artifacts?, errors }` — consistent with `checkConfig`. If any file is missing, `artifacts` is `undefined` and `errors` lists one string per missing file. On success, `errors` is an empty array and `artifacts` is a fully-populated `Record<ArtifactRole, Artifact>`. Future callers that need to act on all artifacts must check `errors.length === 0` before using `artifacts`.
+
+**Boundary validation approach:** `validateBoundaries` checks each artifact for section headers (markdown `#`/`##`/`###`) that belong to a foreign artifact role. Violations are detected via regex against individual lines. Each `BoundaryViolation` carries `role`, `path`, `issue` (which foreign domain was detected), and `evidence` (the exact offending header line). False positives are possible if artifact content discusses another role's section names in prose — this is acceptable for v1; detection is section-header-level only, not full NLP.
+
+**`system.md` not in config:** The Slice 3 definition referenced `system.md`, but the current config has no `system.md` artifact. The `execution_guidance` and `next_slice` (pipeline) artifacts serve the system contract role in this project. Boundary validation covers all five configured roles; no `system.md`-specific handling was added. Flagged for awareness — if a `system.md` artifact is introduced in a future slice, `ArtifactRole` and `FOREIGN_RULES` in `src/artifacts.ts` must be extended.
+
+**59 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 3 is complete. The next unchecked slice is Slice 4 — enhance `--check-config` output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. (Note: per the Slice 4 handoff below, this was substantially completed in Slice 2; Slice 4 may be re-scoped or marked redundant.) After Slice 4, the artifact loader in `src/artifacts.ts` is the foundation for Slice 5 (`--status`) and Slice 8 (`--print-artifact`).
+
+---
 
 ### Slice 4 — 2026-05-03
 

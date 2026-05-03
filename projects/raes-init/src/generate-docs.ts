@@ -41,7 +41,8 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
     '## Invariants',
     '## Workflow Rules',
     '## Anti-Patterns',
-    '## Definition of Done'
+    '## Definition of Done',
+    '## Milestone Guidance'
   ],
   'validation.md': ['## Testing Approach', '## Validation Commands', '## Known Constraints'],
   'raes.config.yaml': []
@@ -538,6 +539,8 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
     ``,
     `Under ## Invariants, include ### Product Invariants and ### Drift Guards subsections.`,
     ``,
+    `Under ## Handoff Notes, output only the heading with no content beneath it. Handoff notes are written by slice execution, not at init time.`,
+    ``,
     `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
     `Output only the markdown document with no preamble or explanation.`
@@ -578,6 +581,9 @@ function buildExecutionGuidancePrompt(prdText: string): string {
     `## Workflow Rules`,
     `## Anti-Patterns`,
     `## Definition of Done`,
+    `## Milestone Guidance`,
+    ``,
+    `Under ## Milestone Guidance, include one ### subsection per milestone derived from the PRD. Each subsection should capture: key implementation considerations, sequencing rationale, and what the executing team should know before beginning that milestone. Base this entirely on the PRD — do not fabricate milestone structure not present in the PRD.`,
     ``,
     `Do not fabricate guidance not supported by the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
@@ -869,6 +875,10 @@ function renderExecutionGuidanceDoc(projectName: string): string {
     '## Definition of Done',
     '',
     '_Project-specific definition of done goes here._',
+    '',
+    '## Milestone Guidance',
+    '',
+    '_Per-milestone implementation notes go here._',
     ''
   ].join('\n');
 }

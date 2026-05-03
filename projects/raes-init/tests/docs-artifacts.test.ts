@@ -8,7 +8,8 @@ const REQUIRED_HEADINGS: Record<string, string[]> = {
     '## Invariants',
     '## Workflow Rules',
     '## Anti-Patterns',
-    '## Definition of Done'
+    '## Definition of Done',
+    '## Milestone Guidance'
   ],
   'validation.md': [
     '# raes-init',

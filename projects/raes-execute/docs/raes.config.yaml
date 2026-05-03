@@ -1,0 +1,11 @@
+project:
+  name: raes-execute
+
+sources:
+  build_intent: docs/prd.md
+  next_slice:
+    path: docs/pipeline.md
+    selection_rule: first_unchecked_slice
+  durable_decisions: docs/decisions.md
+  execution_guidance: docs/execution-guidance.md
+  validation: docs/validation.md

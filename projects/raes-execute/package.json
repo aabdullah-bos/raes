@@ -1,0 +1,16 @@
+{
+  "name": "raes-execute",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "raes-execute": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^5.9.3"
+  }
+}

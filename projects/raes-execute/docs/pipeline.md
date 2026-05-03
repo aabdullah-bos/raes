@@ -73,7 +73,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 ## Slice Backlog
 
-- [ ] Slice 1: Scaffold CLI project and implement foundational command parser with --help, error-handling for missing/extra params, and support for short/long options (subcommands TBD).
+- [x] Slice 1: Scaffold CLI project and implement foundational command parser with --help, error-handling for missing/extra params, and support for short/long options (subcommands TBD).
 
 - [ ] Slice 2: Implement raes.config.yaml schema validation and file existence check; ensure all referenced artifact paths are present and readable; output actionable errors if config is invalid.
 
@@ -116,3 +116,17 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 1 — 2026-05-03
+
+**Stack established:** TypeScript + Node.js native test runner (`node --experimental-strip-types --test`), no external dependencies, matching the `raes-init` sibling project exactly. Files created: `package.json`, `tsconfig.json`, `src/cli.ts`, `tests/cli.test.ts`.
+
+**Exit codes introduced:** `0` = success/help/version; `1` = usage error (unknown option, extra positional arg). Code `2` is reserved for config/runtime errors (not yet used). Recorded in `decisions.md`.
+
+**Architecture note:** `main(argv, io)` accepts injectable `out`/`err` sinks for testability — this pattern must be preserved in all future commands. The `IO` interface is exported from `src/cli.ts`; other modules should import and reuse it rather than re-defining it.
+
+**Known stubs:** All option flags beyond `--help`/`-h`/`--version` are recognized (won't error) but return exit 1 "not yet implemented". Slice 2 will implement `--check-config`; the stub infrastructure is already in place.
+
+**What's left incomplete:** `--print-artifact` and `--flag` accept an argument value (e.g. `--print-artifact prd`). The current arg parser only handles boolean flags; Slice 2 or whichever slice introduces value-bearing options must extend the parser to handle `--option <value>` pairs before those options go live.
+
+**Next operator:** Start Slice 2. The `KNOWN_FLAGS` set in `src/cli.ts` already lists `--check-config`/`-c`; implement the handler there rather than creating a separate file for now.

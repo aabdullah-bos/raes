@@ -219,7 +219,13 @@ Rules:
 - implement the minimum code required to make those tests pass
 - run relevant tests and typecheck using the project's existing tooling and
   the configured validation guidance
-- append handoff notes to the configured pipeline file
+- append handoff notes to the configured pipeline file; handoff notes capture
+  operational state from this slice only: what was left incomplete, what was
+  discovered mid-slice, and what the next operator needs to pick up — do not
+  restate guidance or constraints already present in execution-guidance
+- update the configured execution-guidance source only if this slice uncovered
+  a durable rule that applies to all remaining slices; the threshold is whether
+  the guidance would still be relevant five slices from now
 - append durable implementation decisions to the configured decisions file
   only when needed
 
@@ -238,6 +244,9 @@ Rules:
 - do not duplicate what already exists — reference it
 - no implementation code
 - update pipeline with this slice marked complete and next slice recommended
+- if the review produces durable guidance for future slices, add it to
+  execution-guidance; if it is operational context for the immediate next
+  slice only, add it to pipeline handoff notes
 
 Expected output: Current slice | Artifacts inspected | Findings | Gaps (explicit) |
 Output artifact(s) produced | Flags | Next recommended slice

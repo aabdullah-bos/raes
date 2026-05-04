@@ -903,6 +903,7 @@ function renderRaesConfig(projectName: string): string {
     ``,
     `sources:`,
     `  build_intent: docs/prd.md`,
+    `  system_constraints: docs/system.md`,
     `  next_slice:`,
     `    path: docs/pipeline.md`,
     `    selection_rule: first_unchecked_slice`,

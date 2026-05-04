@@ -5,6 +5,7 @@ export interface RaesConfig {
   project: { name: string };
   sources: {
     build_intent: string;
+    system_constraints: string;
     next_slice: { path: string; selection_rule: string };
     durable_decisions: string;
     execution_guidance: string;
@@ -87,13 +88,13 @@ export function extractConfig(
     errors.push({
       field: 'sources',
       message: "missing required section 'sources' — raes.config.yaml",
-      fix: "Add a 'sources:' section listing build_intent, next_slice, durable_decisions, execution_guidance, and validation paths",
+      fix: "Add a 'sources:' section listing build_intent, system_constraints, next_slice, durable_decisions, execution_guidance, and validation paths",
     });
     return { errors };
   }
 
   const requiredStringKeys: Array<{
-    key: 'build_intent' | 'durable_decisions' | 'execution_guidance' | 'validation';
+    key: 'build_intent' | 'system_constraints' | 'durable_decisions' | 'execution_guidance' | 'validation';
     label: string;
     fix: string;
   }> = [
@@ -101,6 +102,11 @@ export function extractConfig(
       key: 'build_intent',
       label: 'sources.build_intent',
       fix: "Set 'sources.build_intent' to the relative path of your PRD artifact (e.g. docs/prd.md)",
+    },
+    {
+      key: 'system_constraints',
+      label: 'sources.system_constraints',
+      fix: "Set 'sources.system_constraints' to the relative path of your system constraints artifact (e.g. docs/system.md)",
     },
     {
       key: 'durable_decisions',
@@ -159,6 +165,7 @@ export function extractConfig(
     project: { name: (projectRaw as Record<string, unknown>)['name'] as string },
     sources: {
       build_intent: sourcesRaw['build_intent'] as string,
+      system_constraints: sourcesRaw['system_constraints'] as string,
       next_slice: {
         path: (nextSliceRaw as Record<string, unknown>)['path'] as string,
         selection_rule: (nextSliceRaw as Record<string, unknown>)['selection_rule'] as string,
@@ -177,6 +184,7 @@ export function validatePaths(config: RaesConfig, projectRoot: string): ConfigEr
 
   const checks: Array<{ field: string; path: string }> = [
     { field: 'sources.build_intent', path: config.sources.build_intent },
+    { field: 'sources.system_constraints', path: config.sources.system_constraints },
     { field: 'sources.next_slice.path', path: config.sources.next_slice.path },
     { field: 'sources.durable_decisions', path: config.sources.durable_decisions },
     { field: 'sources.execution_guidance', path: config.sources.execution_guidance },

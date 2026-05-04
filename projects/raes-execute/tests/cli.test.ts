@@ -8,6 +8,7 @@ import { main } from '../src/cli.ts';
 
 const ALL_ARTIFACT_PATHS = [
   'docs/prd.md',
+  'docs/system.md',
   'docs/pipeline.md',
   'docs/decisions.md',
   'docs/execution-guidance.md',
@@ -20,6 +21,7 @@ project:
 
 sources:
   build_intent: docs/prd.md
+  system_constraints: docs/system.md
   next_slice:
     path: docs/pipeline.md
     selection_rule: first_unchecked_slice
@@ -109,8 +111,9 @@ test('--check-config exits 0 and lists each verified path', async () => {
     assert.equal(exitCode, 0, 'expected exit 0 on valid config');
     const full = out.join('\n');
     assert.ok(full.includes('sources.build_intent'), 'expected path label in success output');
+    assert.ok(full.includes('sources.system_constraints'), 'expected system_constraints label in success output');
     assert.ok(full.includes('docs/prd.md'), 'expected artifact path in success output');
-    assert.ok(full.includes('5 artifact paths verified'), 'expected count in success summary');
+    assert.ok(full.includes('6 artifact paths verified'), 'expected count in success summary');
     assert.ok(full.includes('OK'), 'expected OK in success summary');
   } finally {
     rmSync(dir, { recursive: true });
@@ -170,9 +173,9 @@ test('--check-config reports all missing artifacts with individual fix blocks', 
     const { exitCode } = await main(['--check-config'], { err: (l) => errs.push(l), cwd: dir });
     assert.equal(exitCode, 2);
     const full = errs.join('\n');
-    assert.ok(full.includes('5 errors found'), 'expected count of all 5 missing artifacts');
+    assert.ok(full.includes('6 errors found'), 'expected count of all 6 missing artifacts');
     const fixCount = (full.match(/fix:/g) ?? []).length;
-    assert.equal(fixCount, 5, 'expected one fix: line per error');
+    assert.equal(fixCount, 6, 'expected one fix: line per error');
   } finally {
     rmSync(dir, { recursive: true });
   }

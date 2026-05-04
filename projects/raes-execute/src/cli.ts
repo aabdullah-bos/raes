@@ -83,6 +83,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     if (errors.length === 0 && config) {
       const paths: Array<[string, string]> = [
         ['sources.build_intent', config.sources.build_intent],
+        ['sources.system_constraints', config.sources.system_constraints],
         ['sources.next_slice', config.sources.next_slice.path],
         ['sources.durable_decisions', config.sources.durable_decisions],
         ['sources.execution_guidance', config.sources.execution_guidance],

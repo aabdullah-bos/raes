@@ -79,9 +79,9 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 3: Build artifact loader module for prd.md, system.md, decisions.md, and config-defined custom artifacts; implement boundary validation to detect mixing of constraint/rationale/intent across artifact types.
 
-- [ ] Slice 3a: Resolve system.md artifact gap flagged in Slice 3: decide whether system.md should be a formal config artifact or document that execution_guidance + next_slice cover the system-contract role. If system.md is added, extend RaesConfig, extractConfig, validatePaths (src/config.ts), ArtifactRole, and FOREIGN_RULES (src/artifacts.ts) and update tests. If not needed, record the decision in decisions.md.
+- [x] Slice 3a: In Slice 3, it was identified that system.md, existed, but was not  a formal config artifact or document. system.md has been added, so we now need to extend RaesConfig, extractConfig, validatePaths (src/config.ts), ArtifactRole, and FOREIGN_RULES (src/artifacts.ts) and update tests.
 
-- [ ] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
+- [x] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
 
 - [ ] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.
 
@@ -118,6 +118,26 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 3a — 2026-05-03
+
+**`system_constraints` now a formal config artifact.** `raes.config.yaml` already contained `system_constraints: docs/system.md`; this slice wired that field through the full stack.
+
+**`RaesConfig.sources` extended:** Added `system_constraints: string`. `extractConfig` validates it as a required non-empty string (placed between `build_intent` and `next_slice` in the `requiredStringKeys` array). `validatePaths` checks it. The `RaesConfig` object literal in `extractConfig` populates it.
+
+**`ArtifactRole` extended:** `'system_constraints'` added to the union in `src/artifacts.ts`. `loadAllArtifacts` specs array now includes `{ role: 'system_constraints', path: config.sources.system_constraints }`.
+
+**`SYSTEM_EXEC_HEADERS` narrowed:** Removed `Known Contracts` and `Drift Guards` — those patterns belong to `system_constraints`, not `execution_guidance`. New value covers `Invariants|Anti-Patterns|Definition of Done|Workflow Rules` only.
+
+**`SYSTEM_CONSTRAINTS_HEADERS` added:** `/^#{1,3}\s+(Product Invariants|Drift Guards|Known Contracts)\s*$/m`. Added as a forbidden pattern in `FOREIGN_RULES` for all roles except `system_constraints` itself. `system_constraints` FOREIGN_RULES excludes `SYSTEM_EXEC_HEADERS` because `system.md` legitimately contains `Anti-Patterns` and `Definition of Done`.
+
+**`--check-config` success output:** Now lists 6 artifact paths (previously 5). `sources.system_constraints` appears second in the column-aligned table.
+
+**65 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 3a is complete. The next unchecked slice is Slice 4 — enhance `--check-config` output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. (Note: this was substantially delivered in Slices 2 and 3a; Slice 4 may be re-scoped or skipped.) After Slice 4, the navigation commands (`--status`, `--list-slices`, `--show-next-slice`) are Slices 5–7.
+
+---
 
 ### Slice 3 — 2026-05-03
 

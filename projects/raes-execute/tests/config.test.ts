@@ -69,6 +69,7 @@ project:
 
 sources:
   build_intent: docs/prd.md
+  system_constraints: docs/system.md
   next_slice:
     path: docs/pipeline.md
     selection_rule: first_unchecked_slice
@@ -81,6 +82,7 @@ sources:
     project: { name: 'raes-execute' },
     sources: {
       build_intent: 'docs/prd.md',
+      system_constraints: 'docs/system.md',
       next_slice: {
         path: 'docs/pipeline.md',
         selection_rule: 'first_unchecked_slice',
@@ -100,6 +102,7 @@ const VALID_PARSED = {
   project: { name: 'my-project' },
   sources: {
     build_intent: 'docs/prd.md',
+    system_constraints: 'docs/system.md',
     next_slice: {
       path: 'docs/pipeline.md',
       selection_rule: 'first_unchecked_slice',
@@ -135,6 +138,19 @@ test('extractConfig: missing sources section reports error with fix', () => {
   const { config, errors } = extractConfig({ project: { name: 'x' } });
   assert.equal(config, undefined);
   assert.ok(errors.some((e) => e.field.includes('sources')));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: missing sources.system_constraints reports error with fix', () => {
+  const data = {
+    project: { name: 'x' },
+    sources: {
+      ...VALID_PARSED.sources,
+      system_constraints: undefined,
+    },
+  };
+  const { errors } = extractConfig(data as Record<string, unknown>);
+  assert.ok(errors.some((e) => e.field.includes('sources.system_constraints')));
   assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
 });
 
@@ -197,6 +213,7 @@ async function makeTempProject(files: string[]): Promise<string> {
 
 const ALL_ARTIFACT_PATHS = [
   'docs/prd.md',
+  'docs/system.md',
   'docs/pipeline.md',
   'docs/decisions.md',
   'docs/execution-guidance.md',
@@ -205,6 +222,7 @@ const ALL_ARTIFACT_PATHS = [
 
 function makeValidConfig(overrides?: Partial<{
   build_intent: string;
+  system_constraints: string;
   nextPath: string;
   durable_decisions: string;
   execution_guidance: string;
@@ -214,6 +232,7 @@ function makeValidConfig(overrides?: Partial<{
     project: { name: 'test-project' },
     sources: {
       build_intent: overrides?.build_intent ?? 'docs/prd.md',
+      system_constraints: overrides?.system_constraints ?? 'docs/system.md',
       next_slice: {
         path: overrides?.nextPath ?? 'docs/pipeline.md',
         selection_rule: 'first_unchecked_slice',
@@ -262,7 +281,7 @@ test('validatePaths: multiple missing files reports all of them with fix guidanc
   const dir = await makeTempProject([]);
   try {
     const errors = validatePaths(makeValidConfig(), dir);
-    assert.ok(errors.length >= 5, 'expected error for each missing artifact');
+    assert.ok(errors.length >= 6, 'expected error for each missing artifact');
     assert.ok(errors.every((e) => e.fix && e.fix.length > 0), 'every error should have fix guidance');
   } finally {
     rmSync(dir, { recursive: true });
@@ -279,6 +298,7 @@ project:
 
 sources:
   build_intent: docs/prd.md
+  system_constraints: docs/system.md
   next_slice:
     path: docs/pipeline.md
     selection_rule: first_unchecked_slice

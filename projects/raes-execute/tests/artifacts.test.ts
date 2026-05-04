@@ -29,6 +29,7 @@ function makeConfig(projectRoot: string): RaesConfig {
     project: { name: 'test-project' },
     sources: {
       build_intent: 'docs/prd.md',
+      system_constraints: 'docs/system.md',
       next_slice: { path: 'docs/pipeline.md', selection_rule: 'first_unchecked_slice' },
       durable_decisions: 'docs/decisions.md',
       execution_guidance: 'docs/execution-guidance.md',
@@ -38,6 +39,7 @@ function makeConfig(projectRoot: string): RaesConfig {
 }
 
 const MINIMAL_PRD = `# PRD\n\n## Business Goals\n\nBuild something useful.\n\n## User Stories\n\n* As a user, I want to do things.\n`;
+const MINIMAL_SYSTEM = `# System\n\n## Product Invariants\n\n- Must behave predictably.\n\n## Drift Guards\n\n- Do not mix layers.\n\n## Known Contracts\n\n- Exit codes are a contract.\n`;
 const MINIMAL_PIPELINE = `# Pipeline\n\n## Slice Backlog\n\n- [ ] Slice 1: Do the thing.\n`;
 const MINIMAL_DECISIONS = `# Decisions\n\n## Durable Decisions\n\n| Decision | Rationale | Date |\n|----------|-----------|------|\n| Use TS | Consistency | 2026-05-03 |\n`;
 const MINIMAL_GUIDANCE = `# Execution Guidance\n\n## Invariants\n\n1. One slice per invocation.\n\n## Anti-Patterns\n\n1. Do not batch slices.\n`;
@@ -45,6 +47,7 @@ const MINIMAL_VALIDATION = `# Validation\n\n## Testing Approach\n\nUse the node 
 
 async function writeAllArtifacts(dir: string): Promise<void> {
   await writeFile(join(dir, 'docs/prd.md'), MINIMAL_PRD);
+  await writeFile(join(dir, 'docs/system.md'), MINIMAL_SYSTEM);
   await writeFile(join(dir, 'docs/pipeline.md'), MINIMAL_PIPELINE);
   await writeFile(join(dir, 'docs/decisions.md'), MINIMAL_DECISIONS);
   await writeFile(join(dir, 'docs/execution-guidance.md'), MINIMAL_GUIDANCE);
@@ -99,7 +102,7 @@ test('loadArtifact: assigns the provided role to the artifact', async () => {
   const dir = await makeTempDir();
   try {
     await writeFile(join(dir, 'docs/decisions.md'), MINIMAL_DECISIONS);
-    const roles: ArtifactRole[] = ['build_intent', 'next_slice', 'durable_decisions', 'execution_guidance', 'validation'];
+    const roles: ArtifactRole[] = ['build_intent', 'system_constraints', 'next_slice', 'durable_decisions', 'execution_guidance', 'validation'];
     for (const role of roles) {
       const { artifact } = loadArtifact(role, 'docs/decisions.md', dir);
       assert.equal(artifact?.role, role, `expected role ${role}`);
@@ -113,7 +116,7 @@ test('loadArtifact: assigns the provided role to the artifact', async () => {
 // loadAllArtifacts
 // ---------------------------------------------------------------------------
 
-test('loadAllArtifacts: returns all five artifacts for valid project', async () => {
+test('loadAllArtifacts: returns all six artifacts for valid project', async () => {
   const dir = await makeTempDir();
   try {
     await writeAllArtifacts(dir);
@@ -122,6 +125,7 @@ test('loadAllArtifacts: returns all five artifacts for valid project', async () 
     assert.equal(errors.length, 0, 'expected no errors');
     assert.ok(artifacts, 'expected artifacts map');
     assert.ok(artifacts.build_intent, 'expected build_intent artifact');
+    assert.ok(artifacts.system_constraints, 'expected system_constraints artifact');
     assert.ok(artifacts.next_slice, 'expected next_slice artifact');
     assert.ok(artifacts.durable_decisions, 'expected durable_decisions artifact');
     assert.ok(artifacts.execution_guidance, 'expected execution_guidance artifact');
@@ -140,6 +144,8 @@ test('loadAllArtifacts: each artifact has correct role assigned from config', as
     assert.ok(artifacts);
     assert.equal(artifacts.build_intent.role, 'build_intent');
     assert.equal(artifacts.build_intent.path, 'docs/prd.md');
+    assert.equal(artifacts.system_constraints.role, 'system_constraints');
+    assert.equal(artifacts.system_constraints.path, 'docs/system.md');
     assert.equal(artifacts.next_slice.role, 'next_slice');
     assert.equal(artifacts.next_slice.path, 'docs/pipeline.md');
     assert.equal(artifacts.durable_decisions.role, 'durable_decisions');
@@ -153,11 +159,11 @@ test('loadAllArtifacts: each artifact has correct role assigned from config', as
 test('loadAllArtifacts: returns errors for each missing file', async () => {
   const dir = await makeTempDir();
   try {
-    // write no files — all five should error
+    // write no files — all six should error
     const config = makeConfig(dir);
     const { artifacts, errors } = loadAllArtifacts(config, dir);
     assert.equal(artifacts, undefined, 'expected no artifacts when files are missing');
-    assert.equal(errors.length, 5, 'expected one error per missing artifact');
+    assert.equal(errors.length, 6, 'expected one error per missing artifact');
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -167,11 +173,11 @@ test('loadAllArtifacts: returns errors only for missing files, not present ones'
   const dir = await makeTempDir();
   try {
     await writeFile(join(dir, 'docs/prd.md'), MINIMAL_PRD);
-    // leave the other four missing
+    // leave the other five missing
     const config = makeConfig(dir);
     const { artifacts, errors } = loadAllArtifacts(config, dir);
     assert.equal(artifacts, undefined);
-    assert.equal(errors.length, 4, 'expected errors for the 4 missing files only');
+    assert.equal(errors.length, 5, 'expected errors for the 5 missing files only');
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -389,9 +395,69 @@ test('validateBoundaries: multiple violations in one artifact are all reported',
 function makeCleanArtifacts(): Record<ArtifactRole, Artifact> {
   return {
     build_intent: { role: 'build_intent', path: 'docs/prd.md', content: MINIMAL_PRD },
+    system_constraints: { role: 'system_constraints', path: 'docs/system.md', content: MINIMAL_SYSTEM },
     next_slice: { role: 'next_slice', path: 'docs/pipeline.md', content: MINIMAL_PIPELINE },
     durable_decisions: { role: 'durable_decisions', path: 'docs/decisions.md', content: MINIMAL_DECISIONS },
     execution_guidance: { role: 'execution_guidance', path: 'docs/execution-guidance.md', content: MINIMAL_GUIDANCE },
     validation: { role: 'validation', path: 'docs/validation.md', content: MINIMAL_VALIDATION },
   };
 }
+
+// ---------------------------------------------------------------------------
+// validateBoundaries — system_constraints boundary violations
+// ---------------------------------------------------------------------------
+
+test('validateBoundaries: system_constraints with Business Goals section reports violation', () => {
+  const artifacts = makeCleanArtifacts();
+  artifacts.system_constraints = {
+    role: 'system_constraints',
+    path: 'docs/system.md',
+    content: `# System\n\n## Product Invariants\n\n- Behave predictably.\n\n## Business Goals\n\nMake money.\n`,
+  };
+  const violations = validateBoundaries(artifacts);
+  assert.ok(violations.some((v) => v.role === 'system_constraints' && v.evidence.includes('Business Goals')));
+});
+
+test('validateBoundaries: system_constraints with Durable Decisions section reports violation', () => {
+  const artifacts = makeCleanArtifacts();
+  artifacts.system_constraints = {
+    role: 'system_constraints',
+    path: 'docs/system.md',
+    content: `# System\n\n## Product Invariants\n\n- Behave predictably.\n\n## Durable Decisions\n\n| Decision | Rationale | Date |\n`,
+  };
+  const violations = validateBoundaries(artifacts);
+  assert.ok(violations.some((v) => v.role === 'system_constraints' && v.evidence.includes('Durable Decisions')));
+});
+
+test('validateBoundaries: system_constraints with Slice Backlog section reports violation', () => {
+  const artifacts = makeCleanArtifacts();
+  artifacts.system_constraints = {
+    role: 'system_constraints',
+    path: 'docs/system.md',
+    content: `# System\n\n## Product Invariants\n\n- Behave predictably.\n\n## Slice Backlog\n\n- [ ] Slice 1: do stuff\n`,
+  };
+  const violations = validateBoundaries(artifacts);
+  assert.ok(violations.some((v) => v.role === 'system_constraints' && v.evidence.includes('Slice Backlog')));
+});
+
+test('validateBoundaries: build_intent with Product Invariants section reports violation', () => {
+  const artifacts = makeCleanArtifacts();
+  artifacts.build_intent = {
+    role: 'build_intent',
+    path: 'docs/prd.md',
+    content: `# PRD\n\n## Business Goals\n\nBuild things.\n\n## Product Invariants\n\n- Must be fast.\n`,
+  };
+  const violations = validateBoundaries(artifacts);
+  assert.ok(violations.some((v) => v.role === 'build_intent' && v.evidence.includes('Product Invariants')));
+});
+
+test('validateBoundaries: execution_guidance with Drift Guards section reports violation', () => {
+  const artifacts = makeCleanArtifacts();
+  artifacts.execution_guidance = {
+    role: 'execution_guidance',
+    path: 'docs/execution-guidance.md',
+    content: `# Guidance\n\n## Invariants\n\n1. One slice.\n\n## Drift Guards\n\n- No mixing layers.\n`,
+  };
+  const violations = validateBoundaries(artifacts);
+  assert.ok(violations.some((v) => v.role === 'execution_guidance' && v.evidence.includes('Drift Guards')));
+});

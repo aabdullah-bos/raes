@@ -79,6 +79,8 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 3: Build artifact loader module for prd.md, system.md, decisions.md, and config-defined custom artifacts; implement boundary validation to detect mixing of constraint/rationale/intent across artifact types.
 
+- [ ] Slice 3a: Resolve system.md artifact gap flagged in Slice 3: decide whether system.md should be a formal config artifact or document that execution_guidance + next_slice cover the system-contract role. If system.md is added, extend RaesConfig, extractConfig, validatePaths (src/config.ts), ArtifactRole, and FOREIGN_RULES (src/artifacts.ts) and update tests. If not needed, record the decision in decisions.md.
+
 - [ ] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
 
 - [ ] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.

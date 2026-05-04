@@ -194,6 +194,7 @@ A single prompt handles both slice types. The agent identifies the slice type fr
 Read `docs/raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
+- system constraints
 - next slice
 - execution guidance
 - durable decisions
@@ -209,8 +210,12 @@ EXECUTION SLICE — loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FL
 Rules:
 - execute one slice only
 - use the configured next-slice source as the source of truth for what to do next
+- use the configured system-constraints source as the source of truth for
+  invariants, drift guards, and contracts that must hold across all slices
 - use the configured execution-guidance source as the source of truth for
   constraints, anti-patterns, workflow rules, and definition of done
+- if system-constraints and execution-guidance disagree on a constraint, flag
+  the conflict explicitly before proceeding — do not silently resolve it
 - use the configured durable-decisions source as the source of truth for
   decisions that must persist across slices
 - do not redesign the milestone or restate the overall plan unless required

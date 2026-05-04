@@ -279,6 +279,7 @@ test('generates raes.config.yaml with required source keys pointing to correct p
   const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
   assert.match(configText, /name: config-check-tool/);
   assert.match(configText, /build_intent: docs\/prd\.md/);
+  assert.match(configText, /system_constraints: docs\/system\.md/);
   assert.match(configText, /path: docs\/pipeline\.md/);
   assert.match(configText, /selection_rule: first_unchecked_slice/);
   assert.match(configText, /durable_decisions: docs\/decisions\.md/);
@@ -405,6 +406,7 @@ test('bare greenfield raes.config.yaml has all required source keys', async () =
   const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
   assert.match(configText, /name: greenfield-config-tool/);
   assert.match(configText, /build_intent: docs\/prd\.md/);
+  assert.match(configText, /system_constraints: docs\/system\.md/);
   assert.match(configText, /path: docs\/pipeline\.md/);
   assert.match(configText, /selection_rule: first_unchecked_slice/);
   assert.match(configText, /durable_decisions: docs\/decisions\.md/);
@@ -1007,6 +1009,7 @@ test('when prdPath is already the target docs/prd.md, it leaves it unchanged and
 
   const configText = await readFile(join(docsDir, 'raes.config.yaml'), 'utf8');
   assert.match(configText, /build_intent: docs\/prd\.md/);
+  assert.match(configText, /system_constraints: docs\/system\.md/);
 });
 
 test('when prdPath is the target docs/prd.md, conflict check still rejects other pre-existing files', async () => {

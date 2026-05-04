@@ -163,6 +163,123 @@ test('--check-config exits 2 and names missing artifact with fix guidance', asyn
   }
 });
 
+// ---------------------------------------------------------------------------
+// --status / -s
+// ---------------------------------------------------------------------------
+
+const PIPELINE_WITH_MIXED_SLICES = `
+## Slice Backlog
+
+- [x] Slice 1: First completed slice
+- [x] Slice 2: Second completed slice
+- [ ] Slice 3: Next unchecked slice to run
+- [ ] Slice 4: Another pending slice
+`;
+
+async function makeTempProjectWithPipeline(pipelineContent: string): Promise<string> {
+  const dir = await makeTempProject(true);
+  await writeFile(join(dir, 'docs/pipeline.md'), pipelineContent);
+  return dir;
+}
+
+test('--status exits 0 and prints project name', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--status'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('test-project'), 'expected project name in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--status prints slice counts (complete, remaining, total)', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--status'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('2 complete'), 'expected complete count in output');
+    assert.ok(full.includes('2 remaining'), 'expected remaining count in output');
+    assert.ok(full.includes('4 total') || full.match(/\(4\s/), 'expected total count in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--status prints the label of the next unchecked slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--status'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('Next unchecked slice to run'), 'expected next slice label in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--status prints "none" for flags', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--status'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('none'), 'expected "none" for flags in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--status prints "all slices complete" when pipeline is fully checked', async () => {
+  const allComplete = `
+## Slice Backlog
+
+- [x] Slice 1: First
+- [x] Slice 2: Second
+`;
+  const dir = await makeTempProjectWithPipeline(allComplete);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--status'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('all slices complete'), 'expected completion message when no next slice');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('-s is alias for --status', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['-s'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.ok(out.some((l) => l.includes('test-project')));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--status exits 2 when config is missing', async () => {
+  const dir = await makeTempProject(false);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--status'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    const full = errs.join('\n');
+    assert.ok(full.includes('raes.config.yaml'), 'expected config error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--check-config reports all missing artifacts with individual fix blocks', async () => {
   // Create a project with config but NO artifact files
   const dir = await mkdtemp(join(tmpdir(), 'raes-cli-test-'));

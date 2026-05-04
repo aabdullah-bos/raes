@@ -1,7 +1,9 @@
 #!/usr/bin/env -S node --experimental-strip-types
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { checkConfig } from './config.ts';
+import { getPipelineStatus } from './pipeline.ts';
 
 const VERSION = '0.1.0';
 
@@ -106,6 +108,36 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     const count = errors.length;
     err(`${count} ${count === 1 ? 'error' : 'errors'} found. Fix the ${count === 1 ? 'issue' : 'issues'} above and re-run --check-config.`);
     return { exitCode: 2 };
+  }
+
+  if (argv.includes('--status') || argv.includes('-s')) {
+    const { errors, config } = checkConfig(cwd);
+    if (errors.length > 0 || !config) {
+      for (const e of errors) {
+        err(`error: ${e.message}`);
+        if (e.fix) err(`  fix:   ${e.fix}`);
+      }
+      return { exitCode: 2 };
+    }
+    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    let pipelineContent: string;
+    try {
+      pipelineContent = readFileSync(pipelinePath, 'utf8');
+    } catch {
+      err(`error: cannot read pipeline file: ${config.sources.next_slice.path}`);
+      return { exitCode: 2 };
+    }
+    const status = getPipelineStatus(pipelineContent);
+    const total = status.totalComplete + status.totalRemaining;
+    out(`Project:   ${config.project.name}`);
+    out(`Slices:    ${status.totalComplete} complete, ${status.totalRemaining} remaining (${total} total)`);
+    if (status.nextSlice) {
+      out(`Next:      ${status.nextSlice.label}`);
+    } else {
+      out(`Next:      all slices complete`);
+    }
+    out(`Flags:     none`);
+    return { exitCode: 0 };
   }
 
   // All other known flags are unimplemented stubs — subcommands TBD

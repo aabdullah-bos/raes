@@ -83,7 +83,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 4: Enhance --check-config output with per-error fix guidance, structured multi-line error blocks, error-count summary, and detailed success listing. Extends Slice 2 foundation; color/icon formatting deferred to Slice 18.
 
-- [ ] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.
+- [x] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.
 
 - [ ] Slice 6: Implement --list-slices (-l) command to output a list of all pipeline slices with position, status (checked/unchecked), type, assignee, and label.
 
@@ -118,6 +118,24 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 5 — 2026-05-03
+
+**New module: `src/pipeline.ts`.** Exports `Slice`, `PipelineStatus`, `parseSlices`, and `getPipelineStatus`. `parseSlices` scopes to the `## Slice Backlog` section (stops at the next `##`-level heading), matching `- [x]` and `- [ ]` lines via regex. All functions are pure/sync; no external dependencies.
+
+**`src/cli.ts` updated:** Added `readFileSync` and `join` imports; added `getPipelineStatus` import from `./pipeline.ts`. The `--status`/`-s` handler reads the pipeline file at `config.sources.next_slice.path` relative to `cwd`, calls `getPipelineStatus`, and writes four labeled lines to `io.out`: `Project`, `Slices`, `Next`, `Flags`. Exits 0 on success, 2 on config or I/O error.
+
+**Milestone not shown.** The pipeline format carries no per-slice milestone metadata. `--status` omits a milestone field; see `decisions.md` for the recorded decision.
+
+**Flags stub.** `Flags: none` is hardcoded. The flag system (Slice 14) will replace this once implemented.
+
+**Smoke test note.** The live `docs/raes.config.yaml` meta-project is not runnable via `node src/cli.ts --status` from the source tree because `raes.config.yaml` is in `docs/` rather than the project root. Tests against temp directories are the authoritative validation.
+
+**85 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 5 is complete. The next unchecked slice is Slice 6 — `--list-slices (-l)`. `parseSlices` from `src/pipeline.ts` is the natural foundation; `--list-slices` will need to format the full `Slice[]` array as a table (position, status icon, label).
+
+---
 
 ### Slice 3a — 2026-05-03
 

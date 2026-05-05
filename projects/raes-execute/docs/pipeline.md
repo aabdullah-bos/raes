@@ -95,7 +95,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 10: Implement --execute-next-slice (-e) command skeleton; integrate slice determination logic and execution loop routing (Execution Loop vs. Review Loop based on slice type).
 
-- [ ] Slice 11: Implement Execution Loop for --execute-next-slice: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only.
+- [x] Slice 11: Implement Execution Loop for --execute-next-slice: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only.
 
 - [ ] Slice 12: Implement Review Loop for --execute-next-slice: prompt for and record review decisions, validate artifact boundaries, update slice status and history upon completion.
 
@@ -118,6 +118,24 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 11 — 2026-05-05
+
+**New module: `src/execution-loop.ts`.** Exports two public symbols: `markSliceComplete(content, slice)` and `runExecutionLoop(slice, config, cwd, io)`. `markSliceComplete` does a plain string replace of `- [ ] {slice.label}` → `- [x] {slice.label}` and returns `null` if no matching unchecked line is found. `runExecutionLoop` is the full Execution Loop body: load all artifacts → validate boundaries → prompt `Proceed? [y/N]` → on confirmation, mark slice complete in pipeline via `writeFileAtomic` → exit 0; on decline or null input, print "Execution cancelled." → exit 0; on boundary violation, print violations to err → exit 2.
+
+**`IO` interface in `src/cli.ts` extended with `in?: () => Promise<string | null>`.** Default implementation (used in production) reads one line from `process.stdin` via Node's `readline`. Injectable in tests. All existing commands that do not reach the Execution Loop are unaffected — `in` is only consumed inside `runExecutionLoop`.
+
+**`-e` handler updated in `src/cli.ts`.** The stub tail (`err`/`return { exitCode: 1 }`) is replaced: for `loopType === 'execution'`, the handler now calls `runExecutionLoop(nextSlice, config, cwd, io)` and returns its result. For `loopType === 'review'`, the handler still prints "Review Loop is not yet implemented" and exits 1 — that stub is the insertion point for Slice 12.
+
+**Boundary validation runs before the confirmation prompt.** If any artifact boundary is violated, execution halts immediately with exit 2 and the operator is shown the artifact path, issue description, and the offending header line. No confirmation prompt is shown.
+
+**`markSliceComplete` replaces only the first matching unchecked line.** If the pipeline contains duplicate labels (unusual but possible), only the first `- [ ] {label}` occurrence is marked complete. This is consistent with `getPipelineStatus`, which also returns only the first unchecked slice.
+
+**159 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 11 is complete. The next unchecked slice is Slice 12 — Review Loop for `--execute-next-slice`: prompt for and record review decisions, validate artifact boundaries, update slice status and history upon completion. The insertion point in `src/cli.ts` is the `// Review Loop not yet implemented (Slice 12)` comment block in the `-e` handler. `runExecutionLoop` in `src/execution-loop.ts` is the reference implementation — the Review Loop follows the same load → validate → prompt → write pattern, but with review-specific prompts and the same `markSliceComplete` + `writeFileAtomic` for the pipeline update.
+
+---
 
 ### Slice 10 — 2026-05-05
 

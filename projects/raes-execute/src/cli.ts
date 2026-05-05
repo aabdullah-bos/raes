@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { checkConfig } from './config.ts';
 import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from './pipeline.ts';
+import { runExecutionLoop } from './execution-loop.ts';
 
 const VERSION = '0.1.0';
 
@@ -44,6 +45,7 @@ const KNOWN_FLAGS = new Set([
 export interface IO {
   out?: (line: string) => void;
   err?: (line: string) => void;
+  in?: () => Promise<string | null>;
   cwd?: string;
 }
 
@@ -237,8 +239,12 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     const loopName = loopType === 'review' ? 'Review Loop' : 'Execution Loop';
     out(`Next:        ${nextSlice.label}`);
     out(`Loop:        ${loopName}`);
-    err(`error: ${loopName} is not yet implemented`);
-    err(`       implement Slice ${loopType === 'review' ? '12' : '11'} to enable this loop`);
+    if (loopType === 'execution') {
+      return runExecutionLoop(nextSlice, config, cwd, io);
+    }
+    // Review Loop not yet implemented (Slice 12)
+    err(`error: Review Loop is not yet implemented`);
+    err(`       implement Slice 12 to enable this loop`);
     return { exitCode: 1 };
   }
 

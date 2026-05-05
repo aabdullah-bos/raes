@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { rmSync } from 'node:fs';
+import { rmSync, readFileSync } from 'node:fs';
 import { main } from '../src/cli.ts';
 
 const ALL_ARTIFACT_PATHS = [
@@ -648,7 +648,7 @@ test('--execute-next-slice shows next slice label in output', async () => {
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir });
     assert.ok(out.join('\n').includes('Implement the next feature'), 'expected slice label in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -659,7 +659,7 @@ test('--execute-next-slice shows "Execution Loop" for an execution-type slice', 
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir });
     assert.ok(out.join('\n').includes('Execution Loop'), 'expected Execution Loop in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -677,13 +677,104 @@ test('--execute-next-slice shows "Review Loop" for a review-type slice', async (
   }
 });
 
-test('--execute-next-slice exits 1 with not-yet-implemented error when loop is execution', async () => {
+test('--execute-next-slice Execution Loop: exits 0 and marks slice complete when user confirms', async () => {
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: (l) => out.push(l), err: () => {}, in: async () => 'y', cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('Slice complete'), 'expected completion confirmation in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Execution Loop: marks slice as [x] in pipeline file on confirm', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: () => {}, in: async () => 'y', cwd: dir },
+    );
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [x] Slice 2: Implement the next feature'),
+      'expected next slice to be marked complete in pipeline',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline when user declines', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('cancelled'), 'expected cancellation message in output');
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement the next feature'),
+      'expected next slice to remain unchecked after cancellation',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline on empty input', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: () => {}, in: async () => null, cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement the next feature'),
+      'expected next slice to remain unchecked when input is empty',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Execution Loop: exits 2 and reports artifact boundary violations', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    // Inject a product-intent header into system.md to create a boundary violation
+    await writeFile(join(dir, 'docs/system.md'), '# System\n\n## Business Goals\n\nThis is a violation.\n');
     const errs: string[] = [];
-    const { exitCode } = await main(['--execute-next-slice'], { out: () => {}, err: (l) => errs.push(l), cwd: dir });
-    assert.equal(exitCode, 1);
-    assert.ok(errs.join('\n').includes('not yet implemented'), 'expected not-yet-implemented in error output');
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: (l) => errs.push(l), in: async () => 'y', cwd: dir },
+    );
+    assert.equal(exitCode, 2);
+    const full = errs.join('\n');
+    assert.ok(full.includes('boundary violations'), 'expected boundary violation message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Execution Loop: shows artifact path in violation report', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    await writeFile(join(dir, 'docs/system.md'), '# System\n\n## Business Goals\n\nThis is a violation.\n');
+    const errs: string[] = [];
+    await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: (l) => errs.push(l), in: async () => 'y', cwd: dir },
+    );
+    assert.ok(errs.join('\n').includes('docs/system.md'), 'expected artifact path in violation report');
   } finally {
     rmSync(dir, { recursive: true });
   }

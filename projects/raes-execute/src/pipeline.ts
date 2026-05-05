@@ -48,3 +48,13 @@ export function getPipelineStatus(content: string): PipelineStatus {
   const nextSlice = slices.find((s) => !s.complete);
   return { slices, nextSlice, totalComplete, totalRemaining };
 }
+
+export function formatSliceList(slices: Slice[]): string[] {
+  if (slices.length === 0) return [];
+  const posWidth = String(slices[slices.length - 1].position).length;
+  return slices.map((s) => {
+    const pos = String(s.position).padStart(posWidth);
+    const status = s.complete ? '✓' : '○';
+    return `${pos}  ${status}  ${s.label}`;
+  });
+}

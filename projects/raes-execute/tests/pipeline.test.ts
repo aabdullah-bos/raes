@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlices, getPipelineStatus } from '../src/pipeline.ts';
+import { parseSlices, getPipelineStatus, formatSliceList } from '../src/pipeline.ts';
 
 const BACKLOG_ONLY = `
 ## Slice Backlog
@@ -149,4 +149,58 @@ test('getPipelineStatus returns empty slices array for empty content', () => {
   assert.equal(status.totalComplete, 0);
   assert.equal(status.totalRemaining, 0);
   assert.equal(status.nextSlice, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// formatSliceList
+// ---------------------------------------------------------------------------
+
+test('formatSliceList returns empty array for empty slices', () => {
+  const lines = formatSliceList([]);
+  assert.deepEqual(lines, []);
+});
+
+test('formatSliceList returns one line per slice', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.equal(lines.length, 4);
+});
+
+test('formatSliceList uses ✓ for complete slices', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].includes('✓'), 'complete slice should show ✓');
+  assert.ok(lines[1].includes('✓'), 'second complete slice should show ✓');
+});
+
+test('formatSliceList uses ○ for pending slices', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[2].includes('○'), 'first pending slice should show ○');
+  assert.ok(lines[3].includes('○'), 'second pending slice should show ○');
+});
+
+test('formatSliceList includes position number in each line', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].trimStart().startsWith('1'), 'first line should start with position 1');
+  assert.ok(lines[3].trimStart().startsWith('4'), 'fourth line should start with position 4');
+});
+
+test('formatSliceList includes slice label in each line', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].includes('First slice label'), 'first line should include label');
+  assert.ok(lines[2].includes('Third slice label'), 'third line should include label');
+});
+
+test('formatSliceList pads position column when max position is multi-digit', () => {
+  const tenSlices = Array.from({ length: 10 }, (_, i) => ({
+    position: i + 1,
+    label: `Slice ${i + 1}: label`,
+    complete: false,
+  }));
+  const lines = formatSliceList(tenSlices);
+  assert.ok(lines[0].startsWith(' 1'), 'single-digit position should be right-padded when max is 2 digits');
+  assert.ok(lines[9].startsWith('10'), 'double-digit position should not be padded');
 });

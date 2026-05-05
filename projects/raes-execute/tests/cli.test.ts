@@ -280,6 +280,105 @@ test('--status exits 2 when config is missing', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// --list-slices / -l
+// ---------------------------------------------------------------------------
+
+test('--list-slices exits 0 with valid config and pipeline', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('-l is alias for --list-slices', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const { exitCode } = await main(['-l'], { out: () => {}, cwd: dir });
+    assert.equal(exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices outputs one line per slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.equal(out.length, 4, 'expected one output line per slice');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices shows ✓ for complete slices', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    assert.ok(out[0].includes('✓'), 'first slice (complete) should show ✓');
+    assert.ok(out[1].includes('✓'), 'second slice (complete) should show ✓');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices shows ○ for pending slices', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    assert.ok(out[2].includes('○'), 'third slice (pending) should show ○');
+    assert.ok(out[3].includes('○'), 'fourth slice (pending) should show ○');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices includes slice labels in output', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_MIXED_SLICES);
+  try {
+    const out: string[] = [];
+    await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    const full = out.join('\n');
+    assert.ok(full.includes('First completed slice'), 'expected first slice label in output');
+    assert.ok(full.includes('Next unchecked slice to run'), 'expected pending slice label in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices with empty pipeline exits 0 with no output lines', async () => {
+  const emptyPipeline = `\n## Slice Backlog\n\n`;
+  const dir = await makeTempProjectWithPipeline(emptyPipeline);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--list-slices'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.equal(out.length, 0, 'expected no output lines for empty pipeline');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--list-slices exits 2 when config is missing', async () => {
+  const dir = await makeTempProject(false);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--list-slices'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('raes.config.yaml'), 'expected config error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--check-config reports all missing artifacts with individual fix blocks', async () => {
   // Create a project with config but NO artifact files
   const dir = await mkdtemp(join(tmpdir(), 'raes-cli-test-'));

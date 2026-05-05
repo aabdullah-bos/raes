@@ -85,7 +85,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 5: Implement --status (-s) command to output current project status: next slice, milestone, total slices complete/remaining, active flags/ambiguity.
 
-- [ ] Slice 6: Implement --list-slices (-l) command to output a list of all pipeline slices with position, status (checked/unchecked), type, assignee, and label.
+- [x] Slice 6: Implement --list-slices (-l) command to output a list of all pipeline slices with position, status (checked/unchecked), type, assignee, and label.
 
 - [ ] Slice 7: Implement --show-next-slice (-n) command to print details of the next unchecked slice (type, constraints, goal, acceptance criteria, related files).
 
@@ -118,6 +118,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 6 — 2026-05-05
+
+**New export: `formatSliceList` in `src/pipeline.ts`.** Accepts `Slice[]`, returns `string[]` — one formatted line per slice. Format: `{position padded}  {✓|○}  {label}`. Position column is right-padded to the width of the largest position number. Pure/sync, no external dependencies. Exported and tested alongside `parseSlices` and `getPipelineStatus`.
+
+**`src/cli.ts` updated:** Added `formatSliceList` to the import from `./pipeline.ts`. Handler for `--list-slices` / `-l` follows the same pattern as `--status`: `checkConfig` → read pipeline file → `getPipelineStatus` → `formatSliceList` → write each line to `out`. Exits 0 on success; exits 2 on config error or unreadable pipeline file.
+
+**`type` and `assignee` fields not shown.** The PRD requires `--list-slices` to display type and assignee per slice. The current pipeline backlog format (`- [x] Slice N: label`) carries no type or assignee metadata. Displaying these fields would require inference from label text, which violates the no-guessing anti-pattern. Both fields are deferred. A decision has been recorded in `decisions.md`. Future slices that introduce type/assignee metadata in the pipeline format must extend `Slice` in `src/pipeline.ts` and update `formatSliceList` accordingly.
+
+**100 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 6 is complete. The next unchecked slice is Slice 7 — `--show-next-slice (-n)`: print full details of the next unchecked slice (type, constraints, goal, acceptance criteria, related files). `parseSlices` from `src/pipeline.ts` is the natural foundation; the challenge is that the current `Slice` interface holds only `position`, `label`, and `complete` — it carries no structured metadata beyond the label string. The same type/assignee gap from Slice 6 applies here.
+
+---
 
 ### Slice 5 — 2026-05-03
 

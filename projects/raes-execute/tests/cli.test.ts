@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { rmSync, readFileSync } from 'node:fs';
 import { main } from '../src/cli.ts';
+import type { Provider } from '../src/provider.ts';
 
 const ALL_ARTIFACT_PATHS = [
   'docs/prd.md',
@@ -43,6 +44,12 @@ async function makeTempProject(withConfig: boolean): Promise<string> {
     await writeFile(join(dir, 'raes.config.yaml'), VALID_CONFIG_YAML);
   }
   return dir;
+}
+
+function testProvider(output = 'agent output'): Provider {
+  return {
+    submit: async () => ({ output }),
+  };
 }
 
 test('--help exits 0 and prints usage', async () => {
@@ -652,7 +659,14 @@ test('--execute-next-slice shows next slice label in output', async () => {
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir });
+    await main(['--execute-next-slice'], {
+      out: (l) => out.push(l),
+      err: () => {},
+      in: async () => 'n',
+      cwd: dir,
+      provider: testProvider(),
+      loadPrompt: () => 'prompt text',
+    });
     assert.ok(out.join('\n').includes('Implement the next feature'), 'expected slice label in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -663,7 +677,14 @@ test('--execute-next-slice shows "Execution Loop" for an execution-type slice', 
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir });
+    await main(['--execute-next-slice'], {
+      out: (l) => out.push(l),
+      err: () => {},
+      in: async () => 'n',
+      cwd: dir,
+      provider: testProvider(),
+      loadPrompt: () => 'prompt text',
+    });
     assert.ok(out.join('\n').includes('Execution Loop'), 'expected Execution Loop in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -674,7 +695,14 @@ test('--execute-next-slice shows "Review Loop" for a review-type slice', async (
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => null, cwd: dir });
+    await main(['--execute-next-slice'], {
+      out: (l) => out.push(l),
+      err: () => {},
+      in: async () => null,
+      cwd: dir,
+      provider: testProvider(),
+      loadPrompt: () => 'prompt text',
+    });
     assert.ok(out.join('\n').includes('Review Loop'), 'expected Review Loop in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -687,7 +715,14 @@ test('--execute-next-slice Execution Loop: exits 0 and marks slice complete when
     const out: string[] = [];
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: (l) => out.push(l), err: () => {}, in: async () => 'y', cwd: dir },
+      {
+        out: (l) => out.push(l),
+        err: () => {},
+        in: async () => 'y',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
     assert.ok(out.join('\n').includes('Slice complete'), 'expected completion confirmation in output');
@@ -701,7 +736,14 @@ test('--execute-next-slice Execution Loop: marks slice as [x] in pipeline file o
   try {
     await main(
       ['--execute-next-slice'],
-      { out: () => {}, err: () => {}, in: async () => 'y', cwd: dir },
+      {
+        out: () => {},
+        err: () => {},
+        in: async () => 'y',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
     assert.ok(
@@ -719,10 +761,17 @@ test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline wh
     const out: string[] = [];
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir },
+      {
+        out: (l) => out.push(l),
+        err: () => {},
+        in: async () => 'n',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
-    assert.ok(out.join('\n').includes('cancelled'), 'expected cancellation message in output');
+    assert.ok(out.join('\n').includes('Slice not recorded'), 'expected not-recorded message in output');
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
     assert.ok(
       pipelineContent.includes('- [ ] Slice 2: Implement the next feature'),
@@ -738,7 +787,14 @@ test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline on
   try {
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: () => {}, err: () => {}, in: async () => null, cwd: dir },
+      {
+        out: () => {},
+        err: () => {},
+        in: async () => null,
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
@@ -790,7 +846,14 @@ test('--execute-next-slice Review Loop: exits 0 and marks slice complete when us
     const out: string[] = [];
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: (l) => out.push(l), err: () => {}, in: async () => 'y', cwd: dir },
+      {
+        out: (l) => out.push(l),
+        err: () => {},
+        in: async () => 'y',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
     assert.ok(out.join('\n').includes('Review complete'), 'expected review completion message in output');
@@ -804,7 +867,14 @@ test('--execute-next-slice Review Loop: marks slice as [x] in pipeline file on c
   try {
     await main(
       ['--execute-next-slice'],
-      { out: () => {}, err: () => {}, in: async () => 'y', cwd: dir },
+      {
+        out: () => {},
+        err: () => {},
+        in: async () => 'y',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
     assert.ok(
@@ -822,10 +892,17 @@ test('--execute-next-slice Review Loop: exits 0 without modifying pipeline when 
     const out: string[] = [];
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir },
+      {
+        out: (l) => out.push(l),
+        err: () => {},
+        in: async () => 'n',
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
-    assert.ok(out.join('\n').includes('cancelled'), 'expected cancellation message in output');
+    assert.ok(out.join('\n').includes('Slice not recorded'), 'expected not-recorded message in output');
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
     assert.ok(
       pipelineContent.includes('- [ ] Slice 2: Implement Review Loop for --execute-next-slice'),
@@ -841,7 +918,14 @@ test('--execute-next-slice Review Loop: exits 0 without modifying pipeline on em
   try {
     const { exitCode } = await main(
       ['--execute-next-slice'],
-      { out: () => {}, err: () => {}, in: async () => null, cwd: dir },
+      {
+        out: () => {},
+        err: () => {},
+        in: async () => null,
+        cwd: dir,
+        provider: testProvider(),
+        loadPrompt: () => 'prompt text',
+      },
     );
     assert.equal(exitCode, 0);
     const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');

@@ -220,3 +220,14 @@ export class CodexProvider implements Provider {
     });
   }
 }
+
+export function createProvider(config: RaesConfig): Provider {
+  switch (config.provider.name) {
+    case 'anthropic':
+      return new ClaudeCodeProvider(config);
+    case 'openai':
+      return new CodexProvider(config);
+    default:
+      throw new Error(`unknown provider: ${(config.provider as { name?: string }).name ?? '(missing)'}`);
+  }
+}

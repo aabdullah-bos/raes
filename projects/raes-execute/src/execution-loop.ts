@@ -5,6 +5,8 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { loadAllArtifacts, validateBoundaries } from './artifacts.ts';
 import { writeFileAtomic } from './io.ts';
+import { loadPrompt, type PromptLoadError } from './prompt.ts';
+import { createProvider, type Provider } from './provider.ts';
 
 interface LoopIO {
   out: (line: string) => void;
@@ -14,6 +16,11 @@ interface LoopIO {
 
 export interface ExecutionLoopResult {
   exitCode: number;
+}
+
+interface ExecutionLoopDeps {
+  provider?: Provider;
+  loadPrompt?: () => string;
 }
 
 // Replace the first `- [ ] {label}` occurrence with `- [x] {label}`.
@@ -44,10 +51,13 @@ export async function runExecutionLoop(
   config: RaesConfig,
   cwd: string,
   io: { out?: (l: string) => void; err?: (l: string) => void; in?: () => Promise<string | null> },
+  deps: ExecutionLoopDeps = {},
 ): Promise<ExecutionLoopResult> {
   const out = io.out ?? ((l) => process.stdout.write(l + '\n'));
   const err = io.err ?? ((l) => process.stderr.write(l + '\n'));
   const readLine = io.in ?? defaultIn;
+  const provider = deps.provider ?? createProvider(config);
+  const readPrompt = deps.loadPrompt ?? loadPrompt;
 
   // Load all artifacts and validate boundaries before any confirmation
   const { artifacts, errors: loadErrors } = loadAllArtifacts(config, cwd);
@@ -72,11 +82,37 @@ export async function runExecutionLoop(
 
   out(`Boundaries:  ok`);
   out('');
-  out(`Proceed? [y/N]`);
+
+  let prompt: string;
+  try {
+    prompt = readPrompt();
+  } catch (e) {
+    err(`error: ${(e as Error).message}`);
+    const fix = (e as Partial<PromptLoadError>).fix;
+    if (typeof fix === 'string' && fix.length > 0) {
+      err(`fix: ${fix}`);
+    }
+    return { exitCode: 2 };
+  }
+
+  const result = await provider.submit(prompt);
+  if (result.error) {
+    err(`error: ${result.error}`);
+    if (result.fix) {
+      err(`fix: ${result.fix}`);
+    }
+    return { exitCode: 2 };
+  }
+
+  for (const line of result.output.split('\n')) {
+    out(line);
+  }
+  out('');
+  out(`Agent output shown above. Record this slice as complete? [y/N]`);
 
   const answer = await readLine();
   if (!answer || answer.trim().toLowerCase() !== 'y') {
-    out('Execution cancelled.');
+    out('Slice not recorded. No artifacts written.');
     return { exitCode: 0 };
   }
 

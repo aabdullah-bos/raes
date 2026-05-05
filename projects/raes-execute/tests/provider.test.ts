@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaudeCodeProvider, CodexProvider } from '../src/provider.ts';
+import { ClaudeCodeProvider, CodexProvider, createProvider } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 import type { SpawnFn } from '../src/provider.ts';
 
@@ -202,4 +202,25 @@ test('CodexProvider: extracts output from JSONL turn/completed event', async () 
   const result = await provider.submit('test prompt');
   assert.equal(result.output, expectedOutput);
   assert.equal(result.error, undefined);
+});
+
+test('createProvider: returns ClaudeCodeProvider for anthropic config', () => {
+  const provider = createProvider(makeConfig('anthropic'));
+  assert.ok(provider instanceof ClaudeCodeProvider);
+});
+
+test('createProvider: returns CodexProvider for openai config', () => {
+  const provider = createProvider(makeConfig('openai'));
+  assert.ok(provider instanceof CodexProvider);
+});
+
+test('createProvider: throws for unknown provider name', () => {
+  const badConfig = {
+    ...makeConfig('anthropic'),
+    provider: { name: 'invalid-provider' },
+  } as unknown as RaesConfig;
+  assert.throws(
+    () => createProvider(badConfig),
+    /unknown provider/i,
+  );
 });

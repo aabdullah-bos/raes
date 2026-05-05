@@ -6,6 +6,7 @@ import { checkConfig } from './config.ts';
 import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from './pipeline.ts';
 import { runExecutionLoop } from './execution-loop.ts';
 import { runReviewLoop } from './review-loop.ts';
+import type { Provider } from './provider.ts';
 
 const VERSION = '0.1.0';
 
@@ -48,6 +49,8 @@ export interface IO {
   err?: (line: string) => void;
   in?: () => Promise<string | null>;
   cwd?: string;
+  provider?: Provider;
+  loadPrompt?: () => string;
 }
 
 export interface Result {
@@ -242,9 +245,15 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     out(`Next:        ${nextSlice.label}`);
     out(`Loop:        ${loopName}`);
     if (loopType === 'execution') {
-      return runExecutionLoop(nextSlice, config, cwd, io);
+      return runExecutionLoop(nextSlice, config, cwd, io, {
+        provider: io.provider,
+        loadPrompt: io.loadPrompt,
+      });
     }
-    return runReviewLoop(nextSlice, config, cwd, io);
+    return runReviewLoop(nextSlice, config, cwd, io, {
+      provider: io.provider,
+      loadPrompt: io.loadPrompt,
+    });
   }
 
   if (printArtifactName !== undefined) {

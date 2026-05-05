@@ -190,7 +190,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 -   prompt piped via stdin; JSONL stream parsed correctly from a fixture.
   - No live subprocess calls in tests.
 
-- [ ] Slice 13e: Implement provider factory and wire into execution and
+- [x] Slice 13e: Implement provider factory and wire into execution and
   review loops with operator confirmation gate.
   - Add createProvider(config: RaesConfig): Provider factory in
     src/provider.ts. Returns ClaudeCodeProvider for 'anthropic', CodexProvider
@@ -227,6 +227,22 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13e — 2026-05-05
+
+**Provider factory added:** `src/provider.ts` now exports `createProvider(config)`, returning `ClaudeCodeProvider` for `provider.name: anthropic` and `CodexProvider` for `provider.name: openai`. The factory still guards unknown names and throws even though config validation should block them earlier.
+
+**Execution and review loops now submit through the configured provider before recording completion.** `src/execution-loop.ts` and `src/review-loop.ts` both load the canonical runtime prompt with `loadPrompt()`, call `provider.submit(prompt)`, print the full provider output to `io.out`, and only then ask: `Agent output shown above. Record this slice as complete? [y/N]`.
+
+**No-write path is explicit.** If the operator answers anything other than `y`, both loops exit 0 and print `Slice not recorded. No artifacts written.`. Pipeline writes still happen only after confirmation and still use `writeFileAtomic`, so the existing atomic write contract remains intact.
+
+**Provider and prompt failures halt with runtime exit code 2.** Both loops now print the provider error string and optional fix guidance to `io.err`. Missing prompt file errors also surface their `fix` guidance from `src/prompt.ts` and exit 2 before any artifact write.
+
+**Test-only injection path added to keep CLI tests offline.** `main(argv, io)` in `src/cli.ts` now accepts optional `io.provider` and `io.loadPrompt`, which are passed through only to `runExecutionLoop`/`runReviewLoop`. Production behavior is unchanged; tests use this to avoid live `claude`/`codex` subprocesses while still exercising the CLI path.
+
+**Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 198 passing.
+
+**Next operator:** Slice 13 is now the next unchecked slice. It should build on the provider-backed loop flow by enforcing halt-on-ambiguity for missing, conflicting, or boundary-violating artifacts beyond the current boundary validation surface, with actionable errors and no advancement until resolved.
 
 ### Slice 13d — 2026-05-05
 

@@ -6,9 +6,16 @@ import type { Slice } from './pipeline.ts';
 import { loadAllArtifacts, validateBoundaries } from './artifacts.ts';
 import { writeFileAtomic } from './io.ts';
 import { markSliceComplete } from './execution-loop.ts';
+import { loadPrompt, type PromptLoadError } from './prompt.ts';
+import { createProvider, type Provider } from './provider.ts';
 
 export interface ReviewLoopResult {
   exitCode: number;
+}
+
+interface ReviewLoopDeps {
+  provider?: Provider;
+  loadPrompt?: () => string;
 }
 
 function defaultIn(): Promise<string | null> {
@@ -31,10 +38,13 @@ export async function runReviewLoop(
   config: RaesConfig,
   cwd: string,
   io: { out?: (l: string) => void; err?: (l: string) => void; in?: () => Promise<string | null> },
+  deps: ReviewLoopDeps = {},
 ): Promise<ReviewLoopResult> {
   const out = io.out ?? ((l) => process.stdout.write(l + '\n'));
   const err = io.err ?? ((l) => process.stderr.write(l + '\n'));
   const readLine = io.in ?? defaultIn;
+  const provider = deps.provider ?? createProvider(config);
+  const readPrompt = deps.loadPrompt ?? loadPrompt;
 
   const { artifacts, errors: loadErrors } = loadAllArtifacts(config, cwd);
   if (loadErrors.length > 0 || !artifacts) {
@@ -58,11 +68,37 @@ export async function runReviewLoop(
 
   out(`Boundaries:  ok`);
   out('');
-  out(`Proceed with review? [y/N]`);
+
+  let prompt: string;
+  try {
+    prompt = readPrompt();
+  } catch (e) {
+    err(`error: ${(e as Error).message}`);
+    const fix = (e as Partial<PromptLoadError>).fix;
+    if (typeof fix === 'string' && fix.length > 0) {
+      err(`fix: ${fix}`);
+    }
+    return { exitCode: 2 };
+  }
+
+  const result = await provider.submit(prompt);
+  if (result.error) {
+    err(`error: ${result.error}`);
+    if (result.fix) {
+      err(`fix: ${result.fix}`);
+    }
+    return { exitCode: 2 };
+  }
+
+  for (const line of result.output.split('\n')) {
+    out(line);
+  }
+  out('');
+  out(`Agent output shown above. Record this slice as complete? [y/N]`);
 
   const answer = await readLine();
   if (!answer || answer.trim().toLowerCase() !== 'y') {
-    out('Review cancelled.');
+    out('Slice not recorded. No artifacts written.');
     return { exitCode: 0 };
   }
 

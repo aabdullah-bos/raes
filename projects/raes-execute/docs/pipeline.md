@@ -97,7 +97,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 11: Implement Execution Loop for --execute-next-slice: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only.
 
-- [ ] Slice 12: Implement Review Loop for --execute-next-slice: prompt for and record review decisions, validate artifact boundaries, update slice status and history upon completion.
+- [x] Slice 12: Implement Review Loop for --execute-next-slice: prompt for and record review decisions, validate artifact boundaries, update slice status and history upon completion.
 
 - [ ] Slice 13: Implement halt-on-ambiguity behavior: detect missing, conflicting, or boundary-violating artifacts; output actionable error messages and prevent advancement until resolved.
 
@@ -118,6 +118,22 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 12 — 2026-05-05
+
+**New module: `src/review-loop.ts`.** Exports `runReviewLoop(slice, config, cwd, io)`. Follows the same load → validate → prompt → write pattern as `runExecutionLoop`: loads all artifacts → validates boundaries → halts with exit 2 on violation → prompts `Proceed with review? [y/N]` → on confirmation, marks slice complete via `markSliceComplete` + `writeFileAtomic` → prints `Review complete: {label}` → exit 0; on decline or null input, prints `Review cancelled.` → exit 0.
+
+**`markSliceComplete` imported from `src/execution-loop.ts`.** The function is already exported from there and shared between both loop modules. No new module or re-export was introduced.
+
+**`-e` handler in `src/cli.ts` updated.** The `// Review Loop not yet implemented (Slice 12)` stub block is replaced with `return runReviewLoop(nextSlice, config, cwd, io)`. `runReviewLoop` is imported at the top of `src/cli.ts`.
+
+**Existing "shows Review Loop" test updated.** Added `in: async () => null` to prevent the test from blocking once the Review Loop prompts for input. Previously safe because the stub exited before calling `io.in`; now required.
+
+**164 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 12 is complete. The next unchecked slice is Slice 13 — halt-on-ambiguity behavior: detect missing, conflicting, or boundary-violating artifacts; output actionable error messages and prevent advancement until resolved. Both `runExecutionLoop` and `runReviewLoop` already halt on boundary violations (exit 2), but the broader ambiguity detection (missing artifacts, conflicting constraints) is not yet systematic. Slice 13 is the place to harden this across the full execution path.
+
+---
 
 ### Slice 11 — 2026-05-05
 

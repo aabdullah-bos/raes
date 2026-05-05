@@ -670,7 +670,7 @@ test('--execute-next-slice shows "Review Loop" for a review-type slice', async (
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
   try {
     const out: string[] = [];
-    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, in: async () => null, cwd: dir });
     assert.ok(out.join('\n').includes('Review Loop'), 'expected Review Loop in output');
   } finally {
     rmSync(dir, { recursive: true });
@@ -780,13 +780,102 @@ test('--execute-next-slice Execution Loop: shows artifact path in violation repo
   }
 });
 
-test('--execute-next-slice exits 1 with not-yet-implemented error when loop is review', async () => {
+test('--execute-next-slice Review Loop: exits 0 and marks slice complete when user confirms', async () => {
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
   try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: (l) => out.push(l), err: () => {}, in: async () => 'y', cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('Review complete'), 'expected review completion message in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Review Loop: marks slice as [x] in pipeline file on confirm', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: () => {}, in: async () => 'y', cwd: dir },
+    );
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [x] Slice 2: Implement Review Loop for --execute-next-slice'),
+      'expected next slice to be marked complete in pipeline',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Review Loop: exits 0 without modifying pipeline when user declines', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: (l) => out.push(l), err: () => {}, in: async () => 'n', cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('cancelled'), 'expected cancellation message in output');
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement Review Loop for --execute-next-slice'),
+      'expected next slice to remain unchecked after cancellation',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Review Loop: exits 0 without modifying pipeline on empty input', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: () => {}, in: async () => null, cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement Review Loop for --execute-next-slice'),
+      'expected next slice to remain unchecked when input is empty',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Review Loop: exits 2 and reports artifact boundary violations', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    await writeFile(join(dir, 'docs/system.md'), '# System\n\n## Business Goals\n\nThis is a violation.\n');
     const errs: string[] = [];
-    const { exitCode } = await main(['--execute-next-slice'], { out: () => {}, err: (l) => errs.push(l), cwd: dir });
-    assert.equal(exitCode, 1);
-    assert.ok(errs.join('\n').includes('not yet implemented'), 'expected not-yet-implemented in error output');
+    const { exitCode } = await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: (l) => errs.push(l), in: async () => 'y', cwd: dir },
+    );
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('boundary violations'), 'expected boundary violation message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice Review Loop: shows artifact path in violation report', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    await writeFile(join(dir, 'docs/system.md'), '# System\n\n## Business Goals\n\nThis is a violation.\n');
+    const errs: string[] = [];
+    await main(
+      ['--execute-next-slice'],
+      { out: () => {}, err: (l) => errs.push(l), in: async () => 'y', cwd: dir },
+    );
+    assert.ok(errs.join('\n').includes('docs/system.md'), 'expected artifact path in violation report');
   } finally {
     rmSync(dir, { recursive: true });
   }

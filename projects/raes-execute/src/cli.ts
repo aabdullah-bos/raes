@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { checkConfig } from './config.ts';
 import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from './pipeline.ts';
 import { runExecutionLoop } from './execution-loop.ts';
+import { runReviewLoop } from './review-loop.ts';
 
 const VERSION = '0.1.0';
 
@@ -242,10 +243,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     if (loopType === 'execution') {
       return runExecutionLoop(nextSlice, config, cwd, io);
     }
-    // Review Loop not yet implemented (Slice 12)
-    err(`error: Review Loop is not yet implemented`);
-    err(`       implement Slice 12 to enable this loop`);
-    return { exitCode: 1 };
+    return runReviewLoop(nextSlice, config, cwd, io);
   }
 
   if (printArtifactName !== undefined) {

@@ -22,9 +22,10 @@ function makeConfig(writeAccess?: boolean): RaesConfig {
   };
 }
 
-function makeSpawnMock(opts: { stdoutData?: string; exitCode?: number } = {}) {
+function makeSpawnMock(opts: { stdoutData?: string; stderrData?: string; exitCode?: number } = {}) {
   const {
     stdoutData = JSON.stringify({ result: 'agent-output' }),
+    stderrData = '',
     exitCode = 0,
   } = opts;
 
@@ -47,6 +48,9 @@ function makeSpawnMock(opts: { stdoutData?: string; exitCode?: number } = {}) {
           setImmediate(() => {
             if (stdoutData) {
               for (const l of stdoutListeners) l(Buffer.from(stdoutData));
+            }
+            if (stderrData) {
+              for (const l of stderrListeners) l(Buffer.from(stderrData));
             }
             for (const l of closeListeners) l(exitCode);
           });
@@ -82,97 +86,59 @@ function makeSpawnMock(opts: { stdoutData?: string; exitCode?: number } = {}) {
 test('ClaudeCodeProvider: passes --allowedTools flag when write_access is true', async () => {
   const mock = makeSpawnMock();
   const provider = new ClaudeCodeProvider(makeConfig(true), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  try {
-    await provider.submit('test prompt');
-    assert.ok(mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools in args');
-    assert.ok(mock.capturedArgs.includes('Edit,Write,Read'), 'expected tool list in args');
-  } finally {
-    if (saved === undefined) delete process.env['ANTHROPIC_API_KEY'];
-    else process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  await provider.submit('test prompt');
+  assert.ok(mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools in args');
+  assert.ok(mock.capturedArgs.includes('Edit,Write,Read'), 'expected tool list in args');
 });
 
 test('ClaudeCodeProvider: passes --allowedTools flag when sandbox is not set (default)', async () => {
   const mock = makeSpawnMock();
   const provider = new ClaudeCodeProvider(makeConfig(), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  try {
-    await provider.submit('test prompt');
-    assert.ok(mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools when sandbox not configured');
-  } finally {
-    if (saved === undefined) delete process.env['ANTHROPIC_API_KEY'];
-    else process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  await provider.submit('test prompt');
+  assert.ok(mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools when sandbox not configured');
 });
 
 test('ClaudeCodeProvider: omits --allowedTools flag when write_access is false', async () => {
   const mock = makeSpawnMock();
   const provider = new ClaudeCodeProvider(makeConfig(false), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  try {
-    await provider.submit('test prompt');
-    assert.ok(!mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools to be absent when write_access is false');
-  } finally {
-    if (saved === undefined) delete process.env['ANTHROPIC_API_KEY'];
-    else process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  await provider.submit('test prompt');
+  assert.ok(!mock.capturedArgs.includes('--allowedTools'), 'expected --allowedTools to be absent when write_access is false');
 });
 
-test('ClaudeCodeProvider: returns error result (not thrown) when ANTHROPIC_API_KEY is missing', async () => {
-  const mock = makeSpawnMock();
+test('ClaudeCodeProvider: subprocess exits non-zero with auth error output returns ProviderResult with error and fix string', async () => {
+  const mock = makeSpawnMock({
+    stdoutData: '',
+    stderrData: 'Error: Not logged in. Please run claude login.',
+    exitCode: 1,
+  });
   const provider = new ClaudeCodeProvider(makeConfig(), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  delete process.env['ANTHROPIC_API_KEY'];
-  try {
-    let result!: { output: string; error?: string };
-    await assert.doesNotReject(async () => {
-      result = await provider.submit('test prompt');
-    });
-    assert.ok(result.error, 'expected error field to be set when API key is missing');
-    assert.equal(result.output, '', 'expected empty output when API key is missing');
-  } finally {
-    if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, '', 'expected empty output on auth error');
+  assert.ok(result.error, 'expected error field to be set');
+  assert.ok(result.fix, 'expected fix field to be set');
+  assert.match(result.fix, /claude login/, 'expected fix to mention claude login');
 });
 
 test('ClaudeCodeProvider: passes prompt via stdin, not in args', async () => {
   const mock = makeSpawnMock();
   const provider = new ClaudeCodeProvider(makeConfig(), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  try {
-    const prompt = 'unique-prompt-content-for-stdin-test';
-    await provider.submit(prompt);
-    assert.ok(
-      mock.stdinWritten.some((s) => s.includes(prompt)),
-      'expected prompt to be written to stdin',
-    );
-    assert.ok(
-      !mock.capturedArgs.some((a) => a.includes(prompt)),
-      'expected prompt to not appear in args',
-    );
-  } finally {
-    if (saved === undefined) delete process.env['ANTHROPIC_API_KEY'];
-    else process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  const prompt = 'unique-prompt-content-for-stdin-test';
+  await provider.submit(prompt);
+  assert.ok(
+    mock.stdinWritten.some((s) => s.includes(prompt)),
+    'expected prompt to be written to stdin',
+  );
+  assert.ok(
+    !mock.capturedArgs.some((a) => a.includes(prompt)),
+    'expected prompt to not appear in args',
+  );
 });
 
 test('ClaudeCodeProvider: extracts output from JSON result field', async () => {
   const expectedOutput = 'the agent response text';
   const mock = makeSpawnMock({ stdoutData: JSON.stringify({ result: expectedOutput }) });
   const provider = new ClaudeCodeProvider(makeConfig(), mock.spawnFn);
-  const saved = process.env['ANTHROPIC_API_KEY'];
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  try {
-    const result = await provider.submit('test prompt');
-    assert.equal(result.output, expectedOutput);
-    assert.equal(result.error, undefined);
-  } finally {
-    if (saved === undefined) delete process.env['ANTHROPIC_API_KEY'];
-    else process.env['ANTHROPIC_API_KEY'] = saved;
-  }
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, expectedOutput);
+  assert.equal(result.error, undefined);
 });

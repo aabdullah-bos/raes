@@ -156,7 +156,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     not a thrown exception; assert prompt is passed via stdin not argv.
   - No live subprocess calls in tests.
 
-- [ ] Slice 13c-fix: Correct ClaudeCodeProvider authentication behavior.
+- [x] Slice 13c-fix: Correct ClaudeCodeProvider authentication behavior.
   - Remove the ANTHROPIC_API_KEY check from ClaudeCodeProvider.submit
     in src/provider.ts. Authentication is handled by the operator's
     existing `claude login` session or ANTHROPIC_API_KEY if already
@@ -227,6 +227,24 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13c-fix — 2026-05-05
+
+**`ANTHROPIC_API_KEY` check removed from `ClaudeCodeProvider.submit` in `src/provider.ts`.** The early-return error path that read `process.env['ANTHROPIC_API_KEY']` and returned a structured error when absent has been deleted. Authentication is now handled by the operator's pre-existing `claude login` session (or `ANTHROPIC_API_KEY` if already in the inherited environment); `raes-execute` does not inspect or inject it.
+
+**`ProviderResult` extended with optional `fix?: string` field.** Callers consuming `ProviderResult` should check `result.fix` when `result.error` is set to surface remediation guidance to the operator.
+
+**Non-zero exit handler now detects auth errors.** If the subprocess exits non-zero and stderr matches `/not logged in|unauthorized|unauthenticated|authentication|login required/i`, the returned `ProviderResult` includes `fix: 'Run \`claude login\` to authenticate before using the anthropic provider.'`. Non-auth non-zero exits return a plain error string with no `fix` field (same as before).
+
+**Test cleanup.** The "missing API key returns error" test was removed. The three `--allowedTools` flag tests no longer set/restore `ANTHROPIC_API_KEY` (the key check is gone, so the env var manipulation was noise). The new test "subprocess exits non-zero with auth error output returns ProviderResult with error and fix string" uses a `stderrData` fixture and asserts `result.fix` matches `/claude login/`.
+
+**`makeSpawnMock` extended with `stderrData` option.** `stderrData` is emitted before the `close` event when non-empty. All existing tests continue to work without changes to their call sites (default is `''`).
+
+**182 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 13d — implement `CodexProvider` in `src/provider.ts` following the same `Provider` interface. Spawns `codex exec -`; pipes prompt via stdin; `--sandbox workspace-write` when `write_access` is true. Does not read or inject API keys. Parses JSONL event stream and extracts the final text from the `turn/completed` event. Auth failure detected from non-zero exit + stderr inspection. `ProviderResult.fix` should be populated for auth errors with "Run `codex login` to authenticate before using the openai provider."
+
+---
 
 ### Slice 13c — 2026-05-05
 

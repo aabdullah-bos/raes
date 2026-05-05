@@ -4,6 +4,7 @@ import type { RaesConfig } from './config.ts';
 export interface ProviderResult {
   output: string;
   error?: string;
+  fix?: string;
 }
 
 export interface Provider {
@@ -30,15 +31,6 @@ export class ClaudeCodeProvider implements Provider {
   }
 
   async submit(prompt: string): Promise<ProviderResult> {
-    const apiKey = process.env['ANTHROPIC_API_KEY'];
-    if (!apiKey) {
-      return {
-        output: '',
-        error:
-          'ANTHROPIC_API_KEY is not set — set it in your environment before running raes-execute.',
-      };
-    }
-
     const writeAccess = this.config.provider.sandbox?.write_access !== false;
     const args = ['-p', '--output-format', 'json'];
     if (writeAccess) {
@@ -67,10 +59,19 @@ export class ClaudeCodeProvider implements Provider {
 
       child.on('close', (code: number | null) => {
         if (code !== 0) {
-          resolve({
-            output: '',
-            error: `claude subprocess exited with code ${code ?? 'null'}${stderr ? `. stderr: ${stderr}` : ''}`,
-          });
+          const isAuthError = /not logged in|unauthorized|unauthenticated|authentication|login required/i.test(stderr);
+          if (isAuthError) {
+            resolve({
+              output: '',
+              error: `claude subprocess exited with code ${code ?? 'null'}. ${stderr.trim()}`,
+              fix: 'Run `claude login` to authenticate before using the anthropic provider.',
+            });
+          } else {
+            resolve({
+              output: '',
+              error: `claude subprocess exited with code ${code ?? 'null'}${stderr ? `. stderr: ${stderr}` : ''}`,
+            });
+          }
           return;
         }
 

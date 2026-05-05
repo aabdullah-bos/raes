@@ -87,7 +87,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 6: Implement --list-slices (-l) command to output a list of all pipeline slices with position, status (checked/unchecked), type, assignee, and label.
 
-- [ ] Slice 7: Implement --show-next-slice (-n) command to print details of the next unchecked slice (type, constraints, goal, acceptance criteria, related files).
+- [x] Slice 7: Implement --show-next-slice (-n) command to print details of the next unchecked slice (type, constraints, goal, acceptance criteria, related files).
 
 - [ ] Slice 8: Implement --print-artifact (-p) command to print the content of a named RAES artifact to stdout for debugging and inspection.
 
@@ -118,6 +118,18 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 7 — 2026-05-05
+
+**New export: `formatNextSlice` in `src/pipeline.ts`.** Accepts a `Slice`, returns `string[]` — three labeled lines: `Position`, `Status`, `Label`. Status is `pending` for incomplete slices, `complete` for complete ones. Column alignment uses `padEnd(maxKey + 3)` where `maxKey` is the length of the longest key (`"Position"` = 8), giving consistent indentation across all three fields. Pure/sync, no external dependencies.
+
+**`src/cli.ts` updated:** Added `formatNextSlice` to the import from `./pipeline.ts`. Handler for `--show-next-slice` / `-n` follows the same pattern as `--status` and `--list-slices`: `checkConfig` → read pipeline file → `getPipelineStatus` → if `nextSlice` exists, `formatNextSlice` → else `"all slices complete"`. Exits 0 on success; exits 2 on config error or unreadable pipeline file.
+
+**PRD metadata fields deferred.** The PRD requires `--show-next-slice` to display type, constraints, goal, acceptance criteria, and related files. The current pipeline backlog format (`- [x] Slice N: label`) carries none of this. All deferred fields are omitted in v1 (not shown as placeholders); a decision has been recorded in `decisions.md`. Future slices that introduce structured metadata in the pipeline format must extend `Slice` in `src/pipeline.ts` and update `formatNextSlice`.
+
+**116 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 7 is complete. The next unchecked slice is Slice 8 — `--print-artifact (-p)`: print the content of a named RAES artifact to stdout. This command requires a value argument (e.g. `--print-artifact prd`). The Slice 1 handoff noted that the current arg parser only handles boolean flags; extending it to `--option <value>` pairs is the first task for Slice 8. `RaesConfig` in `src/config.ts` provides the artifact path map needed to resolve artifact names to file paths.
 
 ### Slice 6 — 2026-05-05
 

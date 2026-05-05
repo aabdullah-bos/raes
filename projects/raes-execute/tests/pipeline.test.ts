@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlices, getPipelineStatus, formatSliceList } from '../src/pipeline.ts';
+import { parseSlices, getPipelineStatus, formatSliceList, formatNextSlice } from '../src/pipeline.ts';
 
 const BACKLOG_ONLY = `
 ## Slice Backlog
@@ -192,6 +192,58 @@ test('formatSliceList includes slice label in each line', () => {
   const lines = formatSliceList(slices);
   assert.ok(lines[0].includes('First slice label'), 'first line should include label');
   assert.ok(lines[2].includes('Third slice label'), 'third line should include label');
+});
+
+// ---------------------------------------------------------------------------
+// formatNextSlice
+// ---------------------------------------------------------------------------
+
+test('formatNextSlice returns non-empty lines for a pending slice', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.length > 0);
+});
+
+test('formatNextSlice includes position number in output', () => {
+  const slice = { position: 7, label: 'Slice 7: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('7')), 'should include position number');
+});
+
+test('formatNextSlice includes "Position" label', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().includes('position')), 'should have Position label');
+});
+
+test('formatNextSlice shows "pending" status for unchecked slice', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('pending')), 'should show pending status');
+});
+
+test('formatNextSlice shows "complete" status for checked slice', () => {
+  const slice = { position: 1, label: 'Slice 1: Done', complete: true };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('complete')), 'should show complete status');
+});
+
+test('formatNextSlice includes "Status" label', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().includes('status')), 'should have Status label');
+});
+
+test('formatNextSlice includes slice label text', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something specific', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('Slice 3: Do something specific')), 'should include label text');
+});
+
+test('formatNextSlice includes "Label" field', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().startsWith('label')), 'should have Label field');
 });
 
 test('formatSliceList pads position column when max position is multi-digit', () => {

@@ -477,6 +477,125 @@ test('--show-next-slice exits 2 when pipeline file is unreadable', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// --print-artifact / -p
+// ---------------------------------------------------------------------------
+
+test('--print-artifact exits 0 and prints file content', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    await writeFile(join(dir, 'docs/prd.md'), '# PRD content\nsome text');
+    const out: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'prd'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('PRD content'), 'expected file content in output');
+    assert.ok(full.includes('some text'), 'expected file content in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('-p is alias for --print-artifact', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['-p', 'prd'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact output includes artifact name and path in header', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    const out: string[] = [];
+    await main(['--print-artifact', 'prd'], { out: (l) => out.push(l), cwd: dir });
+    const full = out.join('\n');
+    assert.ok(full.includes('prd'), 'expected artifact name in header');
+    assert.ok(full.includes('docs/prd.md'), 'expected artifact path in header');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact resolves "system" to system_constraints artifact', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    await writeFile(join(dir, 'docs/system.md'), '# system content');
+    const out: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'system'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('system content'), 'expected system.md content in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact resolves "decisions" to durable_decisions artifact', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    await writeFile(join(dir, 'docs/decisions.md'), '# decisions content');
+    const out: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'decisions'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('decisions content'), 'expected decisions.md content in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact exits 1 for unknown artifact name with actionable message', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'bogus'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 1);
+    const full = errs.join('\n');
+    assert.ok(full.includes('bogus'), 'expected unknown name in error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact without value exits 1 with usage message', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--print-artifact'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 1);
+    assert.ok(errs.join('\n').includes('--print-artifact'), 'expected option name in error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact exits 2 when config is missing', async () => {
+  const dir = await makeTempProject(false);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'prd'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('raes.config.yaml'), 'expected config error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--print-artifact exits 2 when artifact file is unreadable', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    rmSync(join(dir, 'docs/prd.md'));
+    const errs: string[] = [];
+    const { exitCode } = await main(['--print-artifact', 'prd'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('prd'), 'expected artifact name in error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--check-config reports all missing artifacts with individual fix blocks', async () => {
   // Create a project with config but NO artifact files
   const dir = await mkdtemp(join(tmpdir(), 'raes-cli-test-'));

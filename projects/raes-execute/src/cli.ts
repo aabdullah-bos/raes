@@ -66,17 +66,36 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     return { exitCode: 0 };
   }
 
-  for (const arg of argv) {
-    if (arg.startsWith('-')) {
-      if (!KNOWN_FLAGS.has(arg)) {
-        err(`error: unknown option: ${arg}`);
+  let printArtifactName: string | undefined;
+
+  {
+    let i = 0;
+    while (i < argv.length) {
+      const arg = argv[i];
+      if (arg.startsWith('-')) {
+        if (!KNOWN_FLAGS.has(arg)) {
+          err(`error: unknown option: ${arg}`);
+          err(`       run 'raes-execute --help' for usage`);
+          return { exitCode: 1 };
+        }
+        if (arg === '--print-artifact' || arg === '-p') {
+          const next = argv[i + 1];
+          if (next === undefined || next.startsWith('-')) {
+            err(`error: --print-artifact requires an artifact name`);
+            err(`       usage: --print-artifact <name>  (e.g. --print-artifact prd)`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          printArtifactName = next;
+          i += 2;
+          continue;
+        }
+      } else {
+        err(`error: unexpected argument: ${arg}`);
         err(`       run 'raes-execute --help' for usage`);
         return { exitCode: 1 };
       }
-    } else {
-      err(`error: unexpected argument: ${arg}`);
-      err(`       run 'raes-execute --help' for usage`);
-      return { exitCode: 1 };
+      i++;
     }
   }
 
@@ -189,6 +208,53 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     for (const line of formatNextSlice(nextSlice)) {
       out(line);
     }
+    return { exitCode: 0 };
+  }
+
+  if (printArtifactName !== undefined) {
+    const { errors, config } = checkConfig(cwd);
+    if (errors.length > 0 || !config) {
+      for (const e of errors) {
+        err(`error: ${e.message}`);
+        if (e.fix) err(`  fix:   ${e.fix}`);
+      }
+      return { exitCode: 2 };
+    }
+
+    const artifactMap: Record<string, string> = {
+      prd: config.sources.build_intent,
+      system: config.sources.system_constraints,
+      system_constraints: config.sources.system_constraints,
+      decisions: config.sources.durable_decisions,
+      durable_decisions: config.sources.durable_decisions,
+      pipeline: config.sources.next_slice.path,
+      next_slice: config.sources.next_slice.path,
+      'execution-guidance': config.sources.execution_guidance,
+      execution_guidance: config.sources.execution_guidance,
+      validation: config.sources.validation,
+    };
+
+    const resolvedPath = artifactMap[printArtifactName.toLowerCase()];
+    if (!resolvedPath) {
+      err(`error: unknown artifact: ${printArtifactName}`);
+      err(`       known artifacts: prd, system, decisions, pipeline, execution-guidance, validation`);
+      err(`       run 'raes-execute --help' for usage`);
+      return { exitCode: 1 };
+    }
+
+    const absPath = join(cwd, resolvedPath);
+    let content: string;
+    try {
+      content = readFileSync(absPath, 'utf8');
+    } catch {
+      err(`error: cannot read artifact '${printArtifactName}': ${resolvedPath}`);
+      return { exitCode: 2 };
+    }
+
+    out(`Artifact:  ${printArtifactName}`);
+    out(`Path:      ${resolvedPath}`);
+    out('');
+    out(content);
     return { exitCode: 0 };
   }
 

@@ -89,7 +89,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 7: Implement --show-next-slice (-n) command to print details of the next unchecked slice (type, constraints, goal, acceptance criteria, related files).
 
-- [ ] Slice 8: Implement --print-artifact (-p) command to print the content of a named RAES artifact to stdout for debugging and inspection.
+- [x] Slice 8: Implement --print-artifact (-p) command to print the content of a named RAES artifact to stdout for debugging and inspection.
 
 - [ ] Slice 9: Design and implement safe, atomic file I/O for artifact updates; establish transactional patterns to prevent partial writes or corrupted state.
 
@@ -118,6 +118,22 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 8 — 2026-05-05
+
+**Arg parser extended to handle value-bearing flags.** The existing `for (const arg of argv)` validation loop was replaced with a `while` loop in `src/cli.ts`. When `--print-artifact` / `-p` is encountered, the loop reads `argv[i+1]` as the value and advances `i` by 2. If no value follows (or the next element starts with `-`), the loop returns exitCode 1 immediately with a usage message. All other flag and positional-arg validation is unchanged. No new module was created; the parser lives inline in `main`.
+
+**`--print-artifact` handler added to `src/cli.ts`.** After the existing `--show-next-slice` handler. The handler: runs `checkConfig` → resolves the artifact name to a path via an inline `artifactMap` → reads the file → prints a two-line header (`Artifact:`, `Path:`), a blank line, then the full file content via the injected `out` sink. Exits 0 on success; exits 1 for unknown artifact name; exits 2 on config error or unreadable file.
+
+**Artifact name map** (case-insensitive): `prd` → `build_intent`, `system` / `system_constraints` → `system_constraints`, `decisions` / `durable_decisions` → `durable_decisions`, `pipeline` / `next_slice` → `next_slice.path`, `execution-guidance` / `execution_guidance` → `execution_guidance`, `validation` → `validation`.
+
+**`--flag` also needs a value argument** (not implemented in this slice). The `--flag` option is listed in `KNOWN_FLAGS` but remains a stub. When `--flag` is implemented (Slice 14), extend the while-loop parser by adding `'--flag'` to the value-bearing branch — the same pattern used here.
+
+**125 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 8 is complete. The next unchecked slice is Slice 9 — design and implement safe, atomic file I/O for artifact updates; establish transactional patterns to prevent partial writes or corrupted state. This is a foundational infrastructure slice that unblocks Slices 10–12 (execute-next-slice and its loops).
+
+---
 
 ### Slice 7 — 2026-05-05
 

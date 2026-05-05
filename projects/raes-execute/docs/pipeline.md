@@ -118,7 +118,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     a string containing the EXECUTION SLICE and REVIEW SLICE section headers.
   - No provider call. No config change. Prompt file and loader only.
 
-- [ ] Slice 13b: Extend raes.config.yaml schema with provider key and
+- [x] Slice 13b: Extend raes.config.yaml schema with provider key and
   add config validation.
   - Add provider block to RaesConfig in src/config.ts:
       provider:
@@ -209,6 +209,31 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13b — 2026-05-05
+
+**`RaesConfig` extended with `provider` field.** Added to `src/config.ts`:
+```
+provider: {
+  name: 'anthropic' | 'openai';   // required
+  model?: string;                  // optional
+  sandbox?: { write_access?: boolean };  // optional
+}
+```
+
+**`extractConfig` updated.** Validates `provider.name` is present and is one of `anthropic` or `openai`. Missing `provider` section or unknown `provider.name` emits a `ConfigError` with a `fix` string. `model` and `sandbox.write_access` are optional — no error if absent. `write_access` is parsed from the YAML string `'true'`/`'false'` and stored as a boolean.
+
+**`--check-config` success output updated.** `provider.name` now appears as a row in the verified fields table. Summary line changed to `raes.config.yaml OK — 6 artifact paths verified, provider: <name>.`
+
+**`docs/raes.config.yaml` updated.** Added `provider: name: anthropic` so the project's own `--check-config` continues to pass.
+
+**`tests/artifacts.test.ts` updated.** `makeConfig()` helper now includes `provider: { name: 'anthropic' }` to satisfy the updated `RaesConfig` type.
+
+**8 new tests, all passing. 176 tests total, all passing; typecheck clean.**
+
+**Next operator:** Slice 13c — implement `Provider` interface and `ClaudeCodeProvider` in `src/provider.ts`. `config.provider.name` is now validated before any provider is instantiated; `config.provider.sandbox.write_access` (default `true`) controls whether `--allowedTools Edit,Write,Read` is passed to the `claude` subprocess.
+
+---
 
 ### Slice 13a — 2026-05-05
 

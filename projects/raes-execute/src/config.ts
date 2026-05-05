@@ -11,6 +11,13 @@ export interface RaesConfig {
     execution_guidance: string;
     validation: string;
   };
+  provider: {
+    name: 'anthropic' | 'openai';
+    model?: string;
+    sandbox?: {
+      write_access?: boolean;
+    };
+  };
 }
 
 export interface ConfigError {
@@ -159,7 +166,41 @@ export function extractConfig(
     }
   }
 
+  const providerRaw = data['provider'];
+  if (!isObject(providerRaw)) {
+    errors.push({
+      field: 'provider',
+      message: "missing required section 'provider' — raes.config.yaml",
+      fix: "Add a 'provider:' section with 'name: anthropic' or 'name: openai' to raes.config.yaml",
+    });
+  } else {
+    const providerName = providerRaw['name'];
+    if (!nonEmptyString(providerName)) {
+      errors.push({
+        field: 'provider.name',
+        message: "missing or empty 'provider.name' — raes.config.yaml",
+        fix: "Set 'provider.name' to 'anthropic' or 'openai' in raes.config.yaml",
+      });
+    } else if (providerName !== 'anthropic' && providerName !== 'openai') {
+      errors.push({
+        field: 'provider.name',
+        message: `unknown provider '${providerName}' — raes.config.yaml`,
+        fix: "Set 'provider.name' to one of: anthropic, openai",
+      });
+    }
+  }
+
   if (errors.length > 0) return { errors };
+
+  const provider = data['provider'] as Record<string, unknown>;
+  const sandboxRaw = provider['sandbox'];
+  const sandboxObj = isObject(sandboxRaw) ? (sandboxRaw as Record<string, unknown>) : undefined;
+  let writeAccess: boolean | undefined;
+  if (sandboxObj !== undefined) {
+    const wa = sandboxObj['write_access'];
+    if (wa === 'true' || wa === true) writeAccess = true;
+    else if (wa === 'false' || wa === false) writeAccess = false;
+  }
 
   const config: RaesConfig = {
     project: { name: (projectRaw as Record<string, unknown>)['name'] as string },
@@ -173,6 +214,13 @@ export function extractConfig(
       durable_decisions: sourcesRaw['durable_decisions'] as string,
       execution_guidance: sourcesRaw['execution_guidance'] as string,
       validation: sourcesRaw['validation'] as string,
+    },
+    provider: {
+      name: provider['name'] as 'anthropic' | 'openai',
+      ...(nonEmptyString(provider['model']) ? { model: provider['model'] as string } : {}),
+      ...(sandboxObj !== undefined
+        ? { sandbox: writeAccess !== undefined ? { write_access: writeAccess } : {} }
+        : {}),
     },
   };
 

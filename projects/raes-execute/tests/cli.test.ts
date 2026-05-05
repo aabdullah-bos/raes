@@ -28,6 +28,9 @@ sources:
   durable_decisions: docs/decisions.md
   execution_guidance: docs/execution-guidance.md
   validation: docs/validation.md
+
+provider:
+  name: anthropic
 `;
 
 async function makeTempProject(withConfig: boolean): Promise<string> {
@@ -113,7 +116,8 @@ test('--check-config exits 0 and lists each verified path', async () => {
     assert.ok(full.includes('sources.build_intent'), 'expected path label in success output');
     assert.ok(full.includes('sources.system_constraints'), 'expected system_constraints label in success output');
     assert.ok(full.includes('docs/prd.md'), 'expected artifact path in success output');
-    assert.ok(full.includes('6 artifact paths verified'), 'expected count in success summary');
+    assert.ok(full.includes('provider.name'), 'expected provider.name in success output');
+    assert.ok(full.includes('anthropic'), 'expected provider name value in success output');
     assert.ok(full.includes('OK'), 'expected OK in success summary');
   } finally {
     rmSync(dir, { recursive: true });

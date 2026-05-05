@@ -111,6 +111,7 @@ const VALID_PARSED = {
     execution_guidance: 'docs/execution-guidance.md',
     validation: 'docs/validation.md',
   },
+  provider: { name: 'anthropic' },
 };
 
 test('extractConfig: valid parsed data returns config with no errors', () => {
@@ -227,6 +228,7 @@ function makeValidConfig(overrides?: Partial<{
   durable_decisions: string;
   execution_guidance: string;
   validation: string;
+  providerName: 'anthropic' | 'openai';
 }>) {
   return {
     project: { name: 'test-project' },
@@ -241,6 +243,7 @@ function makeValidConfig(overrides?: Partial<{
       execution_guidance: overrides?.execution_guidance ?? 'docs/execution-guidance.md',
       validation: overrides?.validation ?? 'docs/validation.md',
     },
+    provider: { name: overrides?.providerName ?? 'anthropic' as 'anthropic' | 'openai' },
   };
 }
 
@@ -305,6 +308,9 @@ sources:
   durable_decisions: docs/decisions.md
   execution_guidance: docs/execution-guidance.md
   validation: docs/validation.md
+
+provider:
+  name: anthropic
 `;
 
 test('checkConfig: valid project root returns no errors and a config', async () => {
@@ -363,4 +369,76 @@ test('checkConfig: no config field on error result', async () => {
   } finally {
     rmSync(dir, { recursive: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// provider validation
+// ---------------------------------------------------------------------------
+
+test('extractConfig: provider.name anthropic returns config with no errors', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'anthropic' } };
+  const { config, errors } = extractConfig(data);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.name, 'anthropic');
+});
+
+test('extractConfig: provider.name openai returns config with no errors', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'openai' } };
+  const { config, errors } = extractConfig(data);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.name, 'openai');
+});
+
+test('extractConfig: missing provider section reports error with fix', () => {
+  const { project, sources } = VALID_PARSED;
+  const { config, errors } = extractConfig({ project, sources });
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field.includes('provider')));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: empty provider.name reports error with fix', () => {
+  const data = { ...VALID_PARSED, provider: { name: '' } };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field.includes('provider.name')));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: unknown provider.name reports error with fix', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'bedrock' } };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field.includes('provider.name')));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: missing sandbox block must not error', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'anthropic' } };
+  const { errors } = extractConfig(data);
+  assert.equal(errors.length, 0);
+});
+
+test('extractConfig: write_access false must not error', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: { name: 'anthropic', sandbox: { write_access: 'false' } },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.sandbox?.write_access, false);
+});
+
+test('extractConfig: optional model field does not error', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: { name: 'anthropic', model: 'claude-opus-4-7' },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.model, 'claude-opus-4-7');
 });

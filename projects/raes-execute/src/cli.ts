@@ -112,13 +112,14 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
         ['sources.durable_decisions', config.sources.durable_decisions],
         ['sources.execution_guidance', config.sources.execution_guidance],
         ['sources.validation', config.sources.validation],
+        ['provider.name', config.provider.name],
       ];
       const labelWidth = Math.max(...paths.map(([l]) => l.length));
       for (const [label, path] of paths) {
         out(`  ${label.padEnd(labelWidth)}  ${path}`);
       }
       out('');
-      out(`raes.config.yaml OK — ${paths.length} artifact paths verified.`);
+      out(`raes.config.yaml OK — 6 artifact paths verified, provider: ${config.provider.name}.`);
       return { exitCode: 0 };
     }
     for (const e of errors) {

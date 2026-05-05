@@ -8,7 +8,7 @@ npm test
 npm run typecheck
 ```
 
-Run both commands from `projects/raes-init/`.
+Run both commands from `projects/raes-execute/`.
 
 ## Known Constraints
 

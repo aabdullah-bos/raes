@@ -596,6 +596,136 @@ test('--print-artifact exits 2 when artifact file is unreadable', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// --execute-next-slice / -e
+// ---------------------------------------------------------------------------
+
+const PIPELINE_WITH_EXECUTION_SLICE = `
+## Slice Backlog
+
+- [x] Slice 1: First completed slice
+- [ ] Slice 2: Implement the next feature
+`;
+
+const PIPELINE_WITH_REVIEW_SLICE = `
+## Slice Backlog
+
+- [x] Slice 1: First completed slice
+- [ ] Slice 2: Implement Review Loop for --execute-next-slice
+`;
+
+const PIPELINE_ALL_COMPLETE = `
+## Slice Backlog
+
+- [x] Slice 1: First
+- [x] Slice 2: Second
+`;
+
+test('--execute-next-slice exits 0 and prints "all slices complete" when no unchecked slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_ALL_COMPLETE);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['--execute-next-slice'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('all slices complete'), 'expected completion message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('-e is alias for --execute-next-slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_ALL_COMPLETE);
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(['-e'], { out: (l) => out.push(l), cwd: dir });
+    assert.equal(exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice shows next slice label in output', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const out: string[] = [];
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    assert.ok(out.join('\n').includes('Implement the next feature'), 'expected slice label in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice shows "Execution Loop" for an execution-type slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const out: string[] = [];
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    assert.ok(out.join('\n').includes('Execution Loop'), 'expected Execution Loop in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice shows "Review Loop" for a review-type slice', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    const out: string[] = [];
+    await main(['--execute-next-slice'], { out: (l) => out.push(l), err: () => {}, cwd: dir });
+    assert.ok(out.join('\n').includes('Review Loop'), 'expected Review Loop in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice exits 1 with not-yet-implemented error when loop is execution', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--execute-next-slice'], { out: () => {}, err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 1);
+    assert.ok(errs.join('\n').includes('not yet implemented'), 'expected not-yet-implemented in error output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice exits 1 with not-yet-implemented error when loop is review', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--execute-next-slice'], { out: () => {}, err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 1);
+    assert.ok(errs.join('\n').includes('not yet implemented'), 'expected not-yet-implemented in error output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice exits 2 when config is missing', async () => {
+  const dir = await makeTempProject(false);
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(['--execute-next-slice'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('raes.config.yaml'), 'expected config error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice exits 2 when pipeline file is unreadable', async () => {
+  const dir = await makeTempProject(true);
+  try {
+    rmSync(join(dir, 'docs/pipeline.md'));
+    const errs: string[] = [];
+    const { exitCode } = await main(['--execute-next-slice'], { err: (l) => errs.push(l), cwd: dir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('pipeline'), 'expected pipeline error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--check-config reports all missing artifacts with individual fix blocks', async () => {
   // Create a project with config but NO artifact files
   const dir = await mkdtemp(join(tmpdir(), 'raes-cli-test-'));

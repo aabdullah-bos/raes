@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlices, getPipelineStatus, formatSliceList, formatNextSlice } from '../src/pipeline.ts';
+import { parseSlices, getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from '../src/pipeline.ts';
 
 const BACKLOG_ONLY = `
 ## Slice Backlog
@@ -244,6 +244,35 @@ test('formatNextSlice includes "Label" field', () => {
   const slice = { position: 1, label: 'Slice 1: Test', complete: false };
   const lines = formatNextSlice(slice);
   assert.ok(lines.some((l) => l.toLowerCase().startsWith('label')), 'should have Label field');
+});
+
+// ---------------------------------------------------------------------------
+// determineLoopType
+// ---------------------------------------------------------------------------
+
+test('determineLoopType returns "execution" for a standard implementation slice', () => {
+  const slice = { position: 10, label: 'Slice 10: implement --execute-next-slice skeleton', complete: false };
+  assert.equal(determineLoopType(slice), 'execution');
+});
+
+test('determineLoopType returns "review" when label contains lowercase "review"', () => {
+  const slice = { position: 12, label: 'Slice 12: review decisions and promote constraints', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
+});
+
+test('determineLoopType returns "review" when label contains capitalized "Review"', () => {
+  const slice = { position: 12, label: 'Slice 12: Implement Review Loop for --execute-next-slice', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
+});
+
+test('determineLoopType does not match "preview" as a review slice', () => {
+  const slice = { position: 5, label: 'Slice 5: preview and inspect current state', complete: false };
+  assert.equal(determineLoopType(slice), 'execution');
+});
+
+test('determineLoopType returns "review" for a slice whose label is exactly the word "review"', () => {
+  const slice = { position: 1, label: 'review', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
 });
 
 test('formatSliceList pads position column when max position is multi-digit', () => {

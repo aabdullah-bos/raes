@@ -93,7 +93,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 9: Design and implement safe, atomic file I/O for artifact updates; establish transactional patterns to prevent partial writes or corrupted state.
 
-- [ ] Slice 10: Implement --execute-next-slice (-e) command skeleton; integrate slice determination logic and execution loop routing (Execution Loop vs. Review Loop based on slice type).
+- [x] Slice 10: Implement --execute-next-slice (-e) command skeleton; integrate slice determination logic and execution loop routing (Execution Loop vs. Review Loop based on slice type).
 
 - [ ] Slice 11: Implement Execution Loop for --execute-next-slice: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only.
 
@@ -118,6 +118,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 10 — 2026-05-05
+
+**New export: `determineLoopType` in `src/pipeline.ts`.** Accepts a `Slice`, returns `'execution' | 'review'`. Infers type by testing the slice label against `/\breview\b/i` — whole-word match, case-insensitive. This is an acknowledged limitation of the current pipeline format, which carries no explicit type metadata (the same deferred-metadata gap recorded for `--list-slices` and `--show-next-slice`). The inference rule is: label contains the word "review" → Review Loop; everything else → Execution Loop. A durable decision has been recorded in `decisions.md`.
+
+**`--execute-next-slice`/`-e` handler added to `src/cli.ts`.** Follows the same pattern as `--show-next-slice`: `checkConfig` → read pipeline file → `getPipelineStatus`. If no next slice, prints "all slices complete" and exits 0. Otherwise, calls `determineLoopType`, prints the slice label and determined loop name to `out`, then writes a not-yet-implemented error to `err` and exits 1. The routing is fully implemented; only the loop bodies are stubs.
+
+**`writeFileAtomic` is not called in this slice.** The skeleton makes no artifact writes. Slices 11 and 12 (loop implementations) are the first callers; they must import `writeFileAtomic` from `src/io.ts` for all artifact updates.
+
+**148 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 10 is complete. The next unchecked slice is Slice 11 — Execution Loop for `--execute-next-slice`: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only. The routing stub in the `-e` handler (the `if (argv.includes('--execute-next-slice') || argv.includes('-e'))` block) is the insertion point — replace the `err`/`return { exitCode: 1 }` tail with the full Execution Loop body. `writeFileAtomic` from `src/io.ts` is the required write primitive.
+
+---
 
 ### Slice 9 — 2026-05-05
 

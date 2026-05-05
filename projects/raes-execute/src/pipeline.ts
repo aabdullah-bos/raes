@@ -59,6 +59,14 @@ export function formatNextSlice(slice: Slice): string[] {
   return entries.map(([k, v]) => `${(k + ':').padEnd(maxKey + 3)}${v}`);
 }
 
+// Infers loop type from slice label. Slices with "review" as a whole word
+// (case-insensitive) route to the Review Loop; all others route to the
+// Execution Loop. This is a known limitation of the current pipeline format,
+// which carries no explicit type metadata.
+export function determineLoopType(slice: Slice): 'execution' | 'review' {
+  return /\breview\b/i.test(slice.label) ? 'review' : 'execution';
+}
+
 export function formatSliceList(slices: Slice[]): string[] {
   if (slices.length === 0) return [];
   const posWidth = String(slices[slices.length - 1].position).length;

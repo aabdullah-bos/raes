@@ -3,7 +3,7 @@ import { realpathSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { checkConfig } from './config.ts';
-import { getPipelineStatus, formatSliceList, formatNextSlice } from './pipeline.ts';
+import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from './pipeline.ts';
 
 const VERSION = '0.1.0';
 
@@ -209,6 +209,37 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       out(line);
     }
     return { exitCode: 0 };
+  }
+
+  if (argv.includes('--execute-next-slice') || argv.includes('-e')) {
+    const { errors, config } = checkConfig(cwd);
+    if (errors.length > 0 || !config) {
+      for (const e of errors) {
+        err(`error: ${e.message}`);
+        if (e.fix) err(`  fix:   ${e.fix}`);
+      }
+      return { exitCode: 2 };
+    }
+    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    let pipelineContent: string;
+    try {
+      pipelineContent = readFileSync(pipelinePath, 'utf8');
+    } catch {
+      err(`error: cannot read pipeline file: ${config.sources.next_slice.path}`);
+      return { exitCode: 2 };
+    }
+    const { nextSlice } = getPipelineStatus(pipelineContent);
+    if (!nextSlice) {
+      out('all slices complete');
+      return { exitCode: 0 };
+    }
+    const loopType = determineLoopType(nextSlice);
+    const loopName = loopType === 'review' ? 'Review Loop' : 'Execution Loop';
+    out(`Next:        ${nextSlice.label}`);
+    out(`Loop:        ${loopName}`);
+    err(`error: ${loopName} is not yet implemented`);
+    err(`       implement Slice ${loopType === 'review' ? '12' : '11'} to enable this loop`);
+    return { exitCode: 1 };
   }
 
   if (printArtifactName !== undefined) {

@@ -105,6 +105,91 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
   - This is a critical point, do not make assumptions Flag all ambiguities
   - No tests requried for this slice
 
+- [x] Slice 13a: Extract canonical prompt into raes-execute runtime artifact.
+  - Copy the canonical prompt text from raes-reference.md (Section 7,
+    "Default Prompt (canonical form)") into src/prompts/execution-loop.md
+    inside raes-execute. The file is the operative runtime copy; divergence
+    from raes-reference.md is accepted and managed manually (see decisions.md).
+  - Implement loadPrompt() in src/prompt.ts: reads
+    src/prompts/execution-loop.md relative to the module location, returns
+    the full string. Throws a structured error with a fix string if the file
+    is missing.
+  - Tests: assert file exists and is non-empty; assert loadPrompt() returns
+    a string containing the EXECUTION SLICE and REVIEW SLICE section headers.
+  - No provider call. No config change. Prompt file and loader only.
+
+- [ ] Slice 13b: Extend raes.config.yaml schema with provider key and
+  add config validation.
+  - Add provider block to RaesConfig in src/config.ts:
+      provider:
+        name: anthropic | openai   (required)
+        model?: string             (optional, defaults per provider)
+        sandbox?:
+          write_access?: boolean   (optional, defaults to true)
+  - Update extractConfig to read and validate provider.name. If missing or
+    not one of the two known values, emit a ConfigError with a fix string.
+  - model and sandbox.write_access are optional; emit no error if absent.
+  - Update the project's own docs/raes.config.yaml to include a provider
+    block with a valid provider.name so --check-config continues to pass
+    on the project's own config after this slice.
+  - Update --check-config success output to include provider.name in the
+    verified fields table.
+  - Tests: valid config with each provider name; missing provider.name;
+    unknown provider.name; missing sandbox block (must not error);
+    write_access false (must not error). All existing tests must pass.
+
+- [ ] Slice 13c: Implement Provider interface and ClaudeCodeProvider.
+  - Define Provider interface in src/provider.ts:
+      interface Provider {
+        submit(prompt: string): Promise<ProviderResult>
+      }
+      interface ProviderResult { output: string; error?: string }
+  - Implement ClaudeCodeProvider: spawns `claude -p --output-format json`
+    subprocess via child_process.spawn. Pipes prompt to stdin. Reads stdout
+    as JSON and extracts text content from the response. If provider.sandbox
+    .write_access is true (default), passes `--allowedTools Edit,Write,Read`.
+    If write_access is false, omits the flag. Reads ANTHROPIC_API_KEY from
+    environment; if missing, returns a ProviderResult with a structured error
+    and fix string (do not throw).
+  - Tests: mock child_process.spawn; assert correct flags passed for
+    write_access true and false; assert missing API key returns error result
+    not a thrown exception; assert prompt is passed via stdin not argv.
+  - No live subprocess calls in tests.
+
+- [ ] Slice 13d: Implement CodexProvider.
+  - Implement CodexProvider in src/provider.ts following the same Provider
+    interface as ClaudeCodeProvider.
+  - Spawns `codex exec -` subprocess. Pipes prompt to stdin (the `-` sentinel
+    makes stdin the full prompt). If write_access is true (default), passes
+    `--sandbox workspace-write`. If false, omits the flag.
+  - Reads OPENAI_API_KEY from environment; if missing, returns ProviderResult
+    with error and fix string.
+  - Codex emits JSONL events on stdout; parse the stream and extract the
+    final text response from the turn/completed event.
+  - Tests: mock child_process.spawn; assert correct flags for write_access
+    true and false; missing API key returns error result not a thrown
+    exception; prompt piped via stdin; JSONL stream parsed correctly from
+    a fixture.
+  - No live subprocess calls in tests.
+
+- [ ] Slice 13e: Implement provider factory and wire into execution and
+  review loops with operator confirmation gate.
+  - Add createProvider(config: RaesConfig): Provider factory in
+    src/provider.ts. Returns ClaudeCodeProvider for 'anthropic', CodexProvider
+    for 'openai'. Throws if name is unknown (config validation in 13b should
+    prevent this, but guard anyway).
+  - In execution-loop.ts: after artifact validation and before the existing
+    Proceed? prompt, call loadPrompt(), call provider.submit(prompt), print
+    the full response to io.out. Then prompt:
+    `Agent output shown above. Record this slice as complete? [y/N]`
+    On y: mark slice complete via markSliceComplete + writeFileAtomic, exit 0.
+    On n: print `Slice not recorded. No artifacts written.`, exit 0.
+    On provider error: print the error and fix string to io.err, exit 2.
+  - Apply the same pattern in review-loop.ts.
+  - Tests: mock Provider interface; assert output is printed before
+    confirmation prompt; assert y records slice; assert n does not write;
+    assert provider error exits 2 without writing. No live provider calls.
+
 - [ ] Slice 13: Implement halt-on-ambiguity behavior: detect missing, conflicting, or boundary-violating artifacts; output actionable error messages and prevent advancement until resolved.
 
 - [ ] Slice 14: Implement --flag command to add ambiguity/blocking/known-issues flags to current slice or config; ensure flagged slices block advancement until flag is cleared by human.
@@ -124,6 +209,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13a — 2026-05-05
+
+**New file: `src/prompts/execution-loop.md`.** Contains the canonical prompt text copied verbatim from `raes-reference.md` Section 7, "Default Prompt (canonical form)". This is the operative runtime copy; the raes-reference.md copy is the human-readable source of truth. Divergence between the two is accepted and managed manually.
+
+**New module: `src/prompt.ts`.** Exports `loadPrompt(): string`. Reads `src/prompts/execution-loop.md` relative to its own module location using `import.meta.url`. Throws a `PromptLoadError` (extends `Error` with a `fix: string` field) if the file is missing. No config change, no provider call.
+
+**`decisions.md` updated.** The existing decision entry that said "path TBD in provider slice" has been updated to reflect the resolved path: `src/prompts/execution-loop.md`.
+
+**4 new tests in `tests/prompt.test.ts` — all passing. 168 tests total, all passing; typecheck clean.**
+
+**Next operator:** Slice 13b — extend `raes.config.yaml` schema with `provider` key and add config validation. `loadPrompt()` from `src/prompt.ts` is the prompt loader; Slice 13c (ClaudeCodeProvider) and 13d (CodexProvider) will call it. The `provider.name` validation is the first thing needed before any provider can be instantiated.
+
+---
 
 ### Slice 12a — 2026-05-05
 

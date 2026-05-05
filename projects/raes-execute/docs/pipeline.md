@@ -98,6 +98,12 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 - [x] Slice 11: Implement Execution Loop for --execute-next-slice: prompt for and record execution decisions, validate artifact boundaries, write results to correct artifact(s) only.
 
 - [x] Slice 12: Implement Review Loop for --execute-next-slice: prompt for and record review decisions, validate artifact boundaries, update slice status and history upon completion.
+  
+- [x] Slice 12a: REVIEW SLICE - Slice 11 and Slice 12 implemented the core experince of raes-execute, but there appears to be a gap between intent and implementation. Both an execution and a review slice require an AI Provider so that they can use the default prompt and AI Provider agent to accomplish the slice.
+  - Perform a gap review to determine if existing implementation calls an AI agent to execute the next slice
+  - If an AI agent is not used then then the next slices should be to create a provider abstraction
+  - This is a critical point, do not make assumptions Flag all ambiguities
+  - No tests requried for this slice
 
 - [ ] Slice 13: Implement halt-on-ambiguity behavior: detect missing, conflicting, or boundary-violating artifacts; output actionable error messages and prevent advancement until resolved.
 
@@ -118,6 +124,24 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 12a — 2026-05-05
+
+**Finding: No AI provider is called.** Both `runExecutionLoop` (`src/execution-loop.ts`) and `runReviewLoop` (`src/review-loop.ts`) validate artifact boundaries, prompt `Proceed? [y/N]`, mark the slice complete in the pipeline, and exit. No AI API is called, no structured prompt is emitted, and no slice content (goal, acceptance criteria, constraints) is consumed or passed anywhere. The operator receives `Slice complete` without any work having been done.
+
+**Three open flags — must be resolved before the next implementation slice:**
+
+1. **CRITICAL AMBIGUITY — CLI calls AI vs. CLI emits prompt.** Slice 12a states loops require an AI Provider. `execution-guidance.md` Invariant 6 states the CLI "does not author, infer, or rewrite content" and that "Human or external AI agent is responsible for all substantive decisions." These are in tension: does the CLI call an AI API directly (Option A), or does it emit a structured prompt for the operator/external AI to act on (Option B)? Option A risks crossing Invariant 6; Option B keeps the CLI as a workflow enforcer. Human must decide before any provider abstraction is designed.
+
+2. **"Default prompt" does not exist.** No prompt template for the Execution Loop or Review Loop exists anywhere in `src/` or `docs/`. The prompt format, content, and structure must be defined before a provider abstraction can be built.
+
+3. **Scope of Slices 13–20 may shift.** If the resolution to flag 1 is Option A (CLI calls AI), slice definitions for 13–20 likely need revision. If Option B, the existing skeleton is closer to sufficient.
+
+**No tests written (per slice definition).** No implementation code produced.
+
+**Next operator:** Resolve the three flags above with the human before proceeding. Once the AI-provider/prompt question is answered, the next implementation slice should be: define the prompt template(s) for both loop types, then build the provider abstraction (or the prompt-emission surface) on top of the existing loop skeletons in `src/execution-loop.ts` and `src/review-loop.ts`.
+
+---
 
 ### Slice 12 — 2026-05-05
 

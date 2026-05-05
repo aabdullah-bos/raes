@@ -1,7 +1,7 @@
 # raes-execute — validation.md
 
 ## Testing Approach
-
+- Keep live network calls out of default test runs; provider behavior should be covered with mocks or stubs.
 ## Validation Commands
 ```sh
 npm test

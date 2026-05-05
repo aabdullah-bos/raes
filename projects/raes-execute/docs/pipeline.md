@@ -171,7 +171,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     ProviderResult with error and fix string" using a stderr fixture.
   - All existing passing tests must continue to pass.
 
-- [ ] Slice 13d: Implement CodexProvider.
+- [x] Slice 13d: Implement CodexProvider.
   - Implement CodexProvider in src/provider.ts following the same Provider
     interface as ClaudeCodeProvider.
   - Spawns `codex exec -` subprocess. Pipes prompt to stdin (the `-` sentinel
@@ -227,6 +227,25 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13d — 2026-05-05
+
+**`CodexProvider` added to `src/provider.ts`.** The new provider implements the existing `Provider` interface and mirrors the Claude adapter shape. It spawns `codex exec -`, writes the full prompt to stdin, and reads stdout/stderr from the subprocess. When `config.provider.sandbox?.write_access !== false`, it passes `--sandbox workspace-write`; when write access is explicitly disabled, the sandbox flag is omitted.
+
+**Auth handling matches the recorded provider contract.** `CodexProvider` does not read or inject `OPENAI_API_KEY`. It treats authentication as an operator/session concern and detects auth failures from non-zero subprocess exit plus stderr inspection. On auth failure, it returns `ProviderResult { output: '', error, fix }` with `fix: 'Run \`codex login\` to authenticate before using the openai provider.'`.
+
+**Codex stdout parsing is JSONL-based.** Successful output is parsed line-by-line until a `type: "turn/completed"` event is found. The implementation extracts the final text from `output_text` first, then falls back to `result` or `text`, with the same fallback search inside a nested `turn` object. If no `turn/completed` event is present, the provider returns an error instead of guessing from partial events.
+
+**Tests updated in `tests/provider.test.ts`.** Added coverage for:
+- `--sandbox workspace-write` when write access is enabled
+- omitting `--sandbox` when write access is disabled
+- auth failure returning `error` + `fix`
+- prompt sent via stdin rather than argv
+- JSONL parsing from a `turn/completed` fixture
+
+**Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 187 passing.
+
+**Next operator:** Slice 13e — implement provider factory and wire provider submission into `execution-loop.ts` and `review-loop.ts` with the operator confirmation gate described in the backlog. `CodexProvider` is available now, so the next slice can focus on runtime wiring rather than adapter behavior.
 
 ### Slice 13c-fix — 2026-05-05
 

@@ -28,6 +28,7 @@ Options:
   -n, --show-next-slice    Print full details of the next unchecked slice
   -p, --print-artifact     Print the content of a named RAES artifact to stdout
   -e, --execute-next-slice Execute the next unchecked slice (Execution or Review loop)
+      --config             Use an explicit raes.config.yaml path
       --dry-run            Preflight --execute-next-slice without provider submission or writes
       --flag               Register an ambiguity, blocking issue, or known problem
       --history            List most recent N executed slices
@@ -41,6 +42,7 @@ const KNOWN_FLAGS = new Set([
   '--show-next-slice', '-n',
   '--print-artifact', '-p',
   '--execute-next-slice', '-e',
+  '--config',
   '--dry-run',
   '--flag',
   '--history',
@@ -77,6 +79,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   let printArtifactName: string | undefined;
+  let configPathOverride: string | undefined;
   let dryRun = false;
 
   {
@@ -101,6 +104,18 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
           i += 2;
           continue;
         }
+        if (arg === '--config') {
+          const next = argv[i + 1];
+          if (next === undefined || next.startsWith('-')) {
+            err(`error: --config requires a config file path`);
+            err(`       usage: --config <path/to/raes.config.yaml>`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          configPathOverride = next;
+          i += 2;
+          continue;
+        }
         if (arg === '--dry-run') {
           dryRun = true;
         }
@@ -120,7 +135,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   if (argv.includes('--check-config') || argv.includes('-c')) {
-    const { errors, config } = checkConfig(cwd);
+    const { errors, config } = checkConfig(cwd, configPathOverride);
     if (errors.length === 0 && config) {
       const paths: Array<[string, string]> = [
         ['sources.build_intent', config.sources.build_intent],
@@ -151,15 +166,15 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   if (argv.includes('--status') || argv.includes('-s')) {
-    const { errors, config } = checkConfig(cwd);
-    if (errors.length > 0 || !config) {
+    const { errors, config, projectRoot } = checkConfig(cwd, configPathOverride);
+    if (errors.length > 0 || !config || !projectRoot) {
       for (const e of errors) {
         err(`error: ${e.message}`);
         if (e.fix) err(`  fix:   ${e.fix}`);
       }
       return { exitCode: 2 };
     }
-    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    const pipelinePath = join(projectRoot, config.sources.next_slice.path);
     let pipelineContent: string;
     try {
       pipelineContent = readFileSync(pipelinePath, 'utf8');
@@ -181,15 +196,15 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   if (argv.includes('--list-slices') || argv.includes('-l')) {
-    const { errors, config } = checkConfig(cwd);
-    if (errors.length > 0 || !config) {
+    const { errors, config, projectRoot } = checkConfig(cwd, configPathOverride);
+    if (errors.length > 0 || !config || !projectRoot) {
       for (const e of errors) {
         err(`error: ${e.message}`);
         if (e.fix) err(`  fix:   ${e.fix}`);
       }
       return { exitCode: 2 };
     }
-    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    const pipelinePath = join(projectRoot, config.sources.next_slice.path);
     let pipelineContent: string;
     try {
       pipelineContent = readFileSync(pipelinePath, 'utf8');
@@ -205,15 +220,15 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   if (argv.includes('--show-next-slice') || argv.includes('-n')) {
-    const { errors, config } = checkConfig(cwd);
-    if (errors.length > 0 || !config) {
+    const { errors, config, projectRoot } = checkConfig(cwd, configPathOverride);
+    if (errors.length > 0 || !config || !projectRoot) {
       for (const e of errors) {
         err(`error: ${e.message}`);
         if (e.fix) err(`  fix:   ${e.fix}`);
       }
       return { exitCode: 2 };
     }
-    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    const pipelinePath = join(projectRoot, config.sources.next_slice.path);
     let pipelineContent: string;
     try {
       pipelineContent = readFileSync(pipelinePath, 'utf8');
@@ -233,15 +248,15 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   if (argv.includes('--execute-next-slice') || argv.includes('-e')) {
-    const { errors, config } = checkConfig(cwd);
-    if (errors.length > 0 || !config) {
+    const { errors, config, projectRoot } = checkConfig(cwd, configPathOverride);
+    if (errors.length > 0 || !config || !projectRoot) {
       for (const e of errors) {
         err(`error: ${e.message}`);
         if (e.fix) err(`  fix:   ${e.fix}`);
       }
       return { exitCode: 2 };
     }
-    const pipelinePath = join(cwd, config.sources.next_slice.path);
+    const pipelinePath = join(projectRoot, config.sources.next_slice.path);
     let pipelineContent: string;
     try {
       pipelineContent = readFileSync(pipelinePath, 'utf8');
@@ -261,7 +276,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     out(`Next:        ${nextSlice.label}`);
     out(`Loop:        ${loopName}`);
     if (dryRun) {
-      const preflight = runSlicePreflight(config, cwd, io.loadPrompt);
+      const preflight = runSlicePreflight(config, projectRoot, io.loadPrompt);
       if (!preflight.ok) {
         for (const line of preflight.errors) {
           err(line);
@@ -276,20 +291,20 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       return { exitCode: 0 };
     }
     if (loopType === 'execution') {
-      return runExecutionLoop(nextSlice, config, cwd, io, {
+      return runExecutionLoop(nextSlice, config, projectRoot, io, {
         provider: io.provider,
         loadPrompt: io.loadPrompt,
       });
     }
-    return runReviewLoop(nextSlice, config, cwd, io, {
+    return runReviewLoop(nextSlice, config, projectRoot, io, {
       provider: io.provider,
       loadPrompt: io.loadPrompt,
     });
   }
 
   if (printArtifactName !== undefined) {
-    const { errors, config } = checkConfig(cwd);
-    if (errors.length > 0 || !config) {
+    const { errors, config, projectRoot } = checkConfig(cwd, configPathOverride);
+    if (errors.length > 0 || !config || !projectRoot) {
       for (const e of errors) {
         err(`error: ${e.message}`);
         if (e.fix) err(`  fix:   ${e.fix}`);
@@ -318,7 +333,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       return { exitCode: 1 };
     }
 
-    const absPath = join(cwd, resolvedPath);
+    const absPath = join(projectRoot, resolvedPath);
     let content: string;
     try {
       content = readFileSync(absPath, 'utf8');

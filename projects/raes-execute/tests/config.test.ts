@@ -326,6 +326,43 @@ test('checkConfig: valid project root returns no errors and a config', async () 
   }
 });
 
+test('checkConfig: explicit config path outside cwd is supported', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-monorepo-test-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'raes.config.yaml'), VALID_CONFIG_YAML);
+
+    const { errors, config } = checkConfig(monorepoDir, join(projectDir, 'raes.config.yaml'));
+    assert.equal(errors.length, 0);
+    assert.ok(config, 'expected config with explicit path');
+    assert.equal(config.project.name, 'test-project');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
+test('checkConfig: does not discover config from child directories without explicit path', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-monorepo-test-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'raes.config.yaml'), VALID_CONFIG_YAML);
+
+    const { errors, config } = checkConfig(monorepoDir);
+    assert.equal(config, undefined);
+    assert.ok(errors.some((e) => e.message.toLowerCase().includes('raes.config.yaml not found')));
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
 test('checkConfig: missing raes.config.yaml reports error with fix', async () => {
   const dir = await makeTempProject([]);
   try {

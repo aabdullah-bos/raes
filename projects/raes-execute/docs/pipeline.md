@@ -219,6 +219,14 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
   - Tests: CLI-path coverage for execution slice and review slice dry-run
     output; assert no provider submission and no pipeline write occur.
 
+- [x] Slice 13f-config: Add explicit project-targeting config behavior for monorepos.
+  - Update config loading so `raes-execute` reads `./raes.config.yaml` from the current working directory by default.
+  - Add optional `--config <path>` override so operators can target a specific RAES project from a monorepo root or sibling directory.
+  - Do not implement implicit upward search or repo-wide discovery.
+  - Standardize the canonical config location to the RAES project root; update error messages and help text accordingly.
+  - Tests: current-directory config success; explicit `--config` success; missing local config with actionable error; ambiguous/discovery behavior must not exist.
+
+
 - [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
     on PATH before or during subprocess spawn, and return a structured
@@ -272,6 +280,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13f-config — 2026-05-05
+
+**Explicit project targeting is now implemented.** `src/cli.ts` accepts `--config <path>` and passes it through all implemented command paths that load config: `--check-config`, `--status`, `--list-slices`, `--show-next-slice`, `--print-artifact`, and `--execute-next-slice`.
+
+**No discovery behavior was added.** `src/config.ts` still defaults to `./raes.config.yaml` in the current working directory when `--config` is absent. It does not search upward or scan child directories. Running from a monorepo root without `--config` still fails with an actionable missing-config error.
+
+**Explicit config changes the effective project root.** When `--config` is provided, `checkConfig()` now resolves the config file path and returns the config directory as the effective project root. All artifact reads, pipeline resolution, dry-run preflight, and execution/review loop calls now use that resolved root rather than the invocation directory.
+
+**Operator-facing guidance was tightened.** Help text now lists `--config`, and the default missing-config fix guidance now tells the operator to either run from a RAES project root or pass `--config <path>`.
+
+**Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 206 passing.
+
+**Next operator:** Slice 13g is next. It can build on the explicit project-root plumbing already in place and should keep using the resolved target project root rather than the invocation cwd when surfacing provider runtime failures.
 
 ### Slice 13f — 2026-05-05
 

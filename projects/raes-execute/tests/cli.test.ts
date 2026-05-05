@@ -189,6 +189,72 @@ test('--check-config exits 2 and names missing artifact with fix guidance', asyn
   }
 });
 
+test('--check-config supports --config <path> from outside the target project', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-cli-monorepo-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'raes.config.yaml'), VALID_CONFIG_YAML);
+
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--config', join(projectDir, 'raes.config.yaml')],
+      { out: (line) => out.push(line), cwd: monorepoDir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('OK'), 'expected explicit config path to validate');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
+test('--status supports --config <path> from outside the target project', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-cli-monorepo-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'raes.config.yaml'), VALID_CONFIG_YAML);
+    await writeFile(join(projectDir, 'docs/pipeline.md'), PIPELINE_WITH_MIXED_SLICES);
+
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--status', '--config', join(projectDir, 'raes.config.yaml')],
+      { out: (line) => out.push(line), cwd: monorepoDir },
+    );
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('test-project'), 'expected explicit config status output');
+    assert.ok(full.includes('Next unchecked slice to run'), 'expected pipeline to resolve from target project');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
+test('--status from a parent directory does not discover nested project configs implicitly', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-cli-monorepo-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'raes.config.yaml'), VALID_CONFIG_YAML);
+
+    const errs: string[] = [];
+    const { exitCode } = await main(['--status'], { err: (line) => errs.push(line), cwd: monorepoDir });
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('raes.config.yaml not found'), 'expected no implicit discovery');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // --status / -s
 // ---------------------------------------------------------------------------

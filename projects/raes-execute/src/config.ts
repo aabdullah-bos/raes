@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 export interface RaesConfig {
   project: { name: string };
@@ -255,8 +255,14 @@ export function validatePaths(config: RaesConfig, projectRoot: string): ConfigEr
 
 export function checkConfig(
   projectRoot: string,
-): { errors: ConfigError[]; config?: RaesConfig } {
-  const configPath = join(projectRoot, 'raes.config.yaml');
+  configPathOverride?: string,
+): { errors: ConfigError[]; config?: RaesConfig; projectRoot?: string; configPath?: string } {
+  const configPath = configPathOverride !== undefined
+    ? resolve(projectRoot, configPathOverride)
+    : join(projectRoot, 'raes.config.yaml');
+  const resolvedProjectRoot = configPathOverride !== undefined
+    ? dirname(configPath)
+    : projectRoot;
 
   if (!existsSync(configPath)) {
     return {
@@ -264,7 +270,9 @@ export function checkConfig(
         {
           field: 'raes.config.yaml',
           message: `raes.config.yaml not found — expected at: ${configPath}`,
-          fix: "Run 'raes init' or create raes.config.yaml in the project root",
+          fix: configPathOverride !== undefined
+            ? "Pass a valid --config <path> pointing to a RAES project config file"
+            : "Run from a RAES project root, pass --config <path>, or create raes.config.yaml in the project root",
         },
       ],
     };
@@ -295,8 +303,8 @@ export function checkConfig(
     };
   }
 
-  const pathErrors = validatePaths(config, projectRoot);
+  const pathErrors = validatePaths(config, resolvedProjectRoot);
   if (pathErrors.length > 0) return { errors: pathErrors };
 
-  return { errors: [], config };
+  return { errors: [], config, projectRoot: resolvedProjectRoot, configPath };
 }

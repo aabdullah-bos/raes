@@ -138,7 +138,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     unknown provider.name; missing sandbox block (must not error);
     write_access false (must not error). All existing tests must pass.
 
-- [ ] Slice 13c: Implement Provider interface and ClaudeCodeProvider.
+- [x] Slice 13c: Implement Provider interface and ClaudeCodeProvider.
   - Define Provider interface in src/provider.ts:
       interface Provider {
         submit(prompt: string): Promise<ProviderResult>
@@ -156,20 +156,38 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     not a thrown exception; assert prompt is passed via stdin not argv.
   - No live subprocess calls in tests.
 
+- [ ] Slice 13c-fix: Correct ClaudeCodeProvider authentication behavior.
+  - Remove the ANTHROPIC_API_KEY check from ClaudeCodeProvider.submit
+    in src/provider.ts. Authentication is handled by the operator's
+    existing `claude login` session or ANTHROPIC_API_KEY if already
+    present in the inherited environment; raes-execute must not read
+    or inject it.
+  - Replace the missing-key error path with subprocess exit-code detection:
+    if the subprocess exits non-zero, inspect stderr for auth-related
+    output and return a ProviderResult with error and fix:
+    "Run `claude login` to authenticate before using the anthropic provider."
+  - Update tests: remove the "missing API key returns error" test case;
+    add "subprocess exits non-zero with auth error output returns
+    ProviderResult with error and fix string" using a stderr fixture.
+  - All existing passing tests must continue to pass.
+
 - [ ] Slice 13d: Implement CodexProvider.
   - Implement CodexProvider in src/provider.ts following the same Provider
     interface as ClaudeCodeProvider.
   - Spawns `codex exec -` subprocess. Pipes prompt to stdin (the `-` sentinel
     makes stdin the full prompt). If write_access is true (default), passes
     `--sandbox workspace-write`. If false, omits the flag.
-  - Reads OPENAI_API_KEY from environment; if missing, returns ProviderResult
-    with error and fix string.
+  - Does not read or inject API keys. Authentication is handled by the
+    operator's existing `codex login` session; the subprocess inherits
+    the operator's environment as-is. If the subprocess exits non-zero,
+    inspect stderr for auth-related output and return a ProviderResult
+    with error and fix: "Run `codex login` to authenticate before using
+    the openai provider."
   - Codex emits JSONL events on stdout; parse the stream and extract the
     final text response from the turn/completed event.
-  - Tests: mock child_process.spawn; assert correct flags for write_access
-    true and false; missing API key returns error result not a thrown
-    exception; prompt piped via stdin; JSONL stream parsed correctly from
-    a fixture.
+  - Tests: remove "missing API key" test case; mock child_process.spawn; 
+-   assert correct flags for write_access true and false;
+-   prompt piped via stdin; JSONL stream parsed correctly from a fixture.
   - No live subprocess calls in tests.
 
 - [ ] Slice 13e: Implement provider factory and wire into execution and
@@ -209,6 +227,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13c — 2026-05-05
+
+**New module: `src/provider.ts`.** Exports `ProviderResult`, `Provider`, `SpawnFn`, and `ClaudeCodeProvider`.
+
+**`SpawnFn` is exported** as a structural type describing only what `ClaudeCodeProvider` consumes from the child process (`stdin.write`/`end`, `stdout.on('data')`, `stderr.on('data')`, `on('close')`). Exporting it allows tests to construct mock spawn functions without importing `node:child_process` or casting through `any`. The real `spawn` from node is cast to `SpawnFn` inside the constructor default via `as unknown as SpawnFn`.
+
+**`ClaudeCodeProvider.submit`** checks `ANTHROPIC_API_KEY` first; returns a structured `ProviderResult` with `error` and empty `output` if missing — does not throw. Spawns `claude -p --output-format json`; passes `--allowedTools Edit,Write,Read` unless `config.provider.sandbox.write_access` is explicitly `false`. Writes prompt to stdin. Parses stdout as JSON; extracts the `result` field as the output string.
+
+**6 new tests in `tests/provider.test.ts` — all passing. 182 tests total, all passing; typecheck clean.**
+
+**Next operator:** Slice 13d — implement `CodexProvider` in `src/provider.ts` following the same `Provider` interface. Spawns `codex exec -`; pipes prompt via stdin; `--sandbox workspace-write` when `write_access` is true. Reads `OPENAI_API_KEY`. Parses JSONL event stream and extracts the final text from the `turn/completed` event.
+
+---
 
 ### Slice 13b — 2026-05-05
 

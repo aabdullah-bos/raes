@@ -91,7 +91,7 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 
 - [x] Slice 8: Implement --print-artifact (-p) command to print the content of a named RAES artifact to stdout for debugging and inspection.
 
-- [ ] Slice 9: Design and implement safe, atomic file I/O for artifact updates; establish transactional patterns to prevent partial writes or corrupted state.
+- [x] Slice 9: Design and implement safe, atomic file I/O for artifact updates; establish transactional patterns to prevent partial writes or corrupted state.
 
 - [ ] Slice 10: Implement --execute-next-slice (-e) command skeleton; integrate slice determination logic and execution loop routing (Execution Loop vs. Review Loop based on slice type).
 
@@ -118,6 +118,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 9 — 2026-05-05
+
+**New module: `src/io.ts`.** Exports a single function `writeFileAtomic(absolutePath, content): { error? }`. Writes content to `.raes-tmp-<8-byte-hex>` in the same directory as the target, then calls `renameSync` to swap atomically. On any failure (write or rename) the temp file is removed with a best-effort `unlinkSync` and an error string is returned. Returns `{}` on success.
+
+**Module placement rationale.** `src/io.ts` is a new module, not an extension of `artifacts.ts` or `config.ts`. This keeps the I/O primitive separate from the artifact-loading logic and the config layer, consistent with system.md's "Command parsing, business logic, and I/O are separate layers" constraint. All future artifact write callers must import `writeFileAtomic` from `src/io.ts` — do not call `writeFileSync` directly on artifact paths elsewhere in the codebase.
+
+**Temp file location is same directory as target.** `rename` is only atomic when source and target are on the same mount point. Placing the temp file in `dirname(absolutePath)` guarantees this without any runtime filesystem checks. A decision has been recorded in `decisions.md`.
+
+**134 tests, all passing; typecheck clean.**
+
+**Next operator:** Slice 9 is complete. The next unchecked slice is Slice 10 — `--execute-next-slice (-e)` command skeleton: integrate slice determination logic and execution loop routing (Execution Loop vs. Review Loop based on slice type). The `writeFileAtomic` function in `src/io.ts` is the write primitive for Slices 10–12; import it from there for all artifact updates.
+
+---
 
 ### Slice 8 — 2026-05-05
 

@@ -208,6 +208,51 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     confirmation prompt; assert y records slice; assert n does not write;
     assert provider error exits 2 without writing. No live provider calls.
 
+- [x] Slice 13f: Add dry-run mode for `--execute-next-slice`.
+  - Add a dry-run option that resolves config, selects the next slice,
+    determines loop type, loads the canonical prompt, and reports what would
+    happen without invoking provider submission or writing any artifact.
+  - Output must include the slice label, loop type, provider name, prompt
+    source path, pipeline path, and whether provider write access is enabled.
+  - Dry-run must exit 0 on a clean preflight and exit 2 on the same config,
+    prompt, or artifact errors that would block a real execution.
+  - Tests: CLI-path coverage for execution slice and review slice dry-run
+    output; assert no provider submission and no pipeline write occur.
+
+- [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
+  - Detect the case where `claude` or `codex` is not installed or not present
+    on PATH before or during subprocess spawn, and return a structured
+    ProviderResult error with an actionable fix string.
+  - Anthropic fix guidance must tell the operator to install Claude Code or
+    make `claude` available on PATH. OpenAI fix guidance must tell the
+    operator to install Codex CLI or make `codex` available on PATH.
+  - Execution and review loops must surface these errors on stderr and exit 2
+    without writing any artifact.
+  - Tests: mock spawn failure / ENOENT for both providers; assert fix guidance
+    and no artifact write in CLI-path execution.
+
+- [ ] Slice 13h: Add clearer provider/preflight output.
+  - Before provider submission in execution-loop.ts and review-loop.ts, print a
+    concise preflight block showing slice label, loop type, provider name,
+    pipeline path, prompt source, and provider write-access mode.
+  - Distinguish at least these runtime failure classes in stderr output:
+    prompt load failure, provider auth failure, provider binary missing,
+    provider output parse failure, and generic provider non-zero exit.
+  - Keep exit code behavior unchanged: usage errors remain 1; runtime/config
+    failures remain 2.
+  - Tests: assert preflight output ordering and class-specific stderr messages
+    for representative provider failures.
+
+- [ ] Slice 13i: Add empty-output guard before slice recording.
+  - If provider submission returns success but the final output is empty or
+    whitespace-only, treat that as an ambiguity/runtime failure rather than
+    prompting to record completion.
+  - Execution and review loops must print an actionable error telling the
+    operator to rerun after resolving the provider issue, then exit 2 with no
+    artifact write.
+  - Tests: mock Provider success with empty output for both loops; assert no
+    confirmation prompt appears and pipeline remains unchanged.
+
 - [ ] Slice 13: Implement halt-on-ambiguity behavior: detect missing, conflicting, or boundary-violating artifacts; output actionable error messages and prevent advancement until resolved.
 
 - [ ] Slice 14: Implement --flag command to add ambiguity/blocking/known-issues flags to current slice or config; ensure flagged slices block advancement until flag is cleared by human.
@@ -227,6 +272,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13f — 2026-05-05
+
+**`--dry-run` added for `--execute-next-slice`.** `src/cli.ts` now accepts `--execute-next-slice --dry-run` and rejects `--dry-run` on its own as a usage error. The dry-run path resolves config, reads the pipeline, selects the next unchecked slice, determines loop type, runs the same artifact/prompt preflight as real execution, and exits before provider submission or artifact writes.
+
+**Preflight output is intentionally narrow.** Dry-run currently prints the slice label, loop type, provider name, canonical prompt source path, pipeline path, provider write-access mode, and a final line stating that provider submission and artifact writes were skipped. This is enough for Slice 13f; clearer runtime preflight formatting remains open in Slice 13h.
+
+**Artifact and prompt validation are now shared.** New module `src/slice-preflight.ts` centralizes artifact loading, boundary validation, and prompt loading. `src/execution-loop.ts`, `src/review-loop.ts`, and the dry-run path in `src/cli.ts` all use it so dry-run fails on the same pre-provider conditions as real execution.
+
+**Prompt path resolution is now explicit.** `src/prompt.ts` exports `getPromptPath()` so CLI output can report the runtime prompt source without duplicating path-building logic.
+
+**Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 201 passing.
+
+**Next operator:** Slice 13g is now next. It should add structured missing-binary handling for `claude` and `codex` subprocess startup failures and surface those errors through the existing provider/runtime error path without writing artifacts.
 
 ### Slice 13e — 2026-05-05
 

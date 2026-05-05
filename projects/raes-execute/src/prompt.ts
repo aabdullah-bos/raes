@@ -6,9 +6,13 @@ export interface PromptLoadError extends Error {
   fix: string;
 }
 
-export function loadPrompt(): string {
+export function getPromptPath(): string {
   const dir = dirname(fileURLToPath(import.meta.url));
-  const promptPath = join(dir, 'prompts', 'execution-loop.md');
+  return join(dir, 'prompts', 'execution-loop.md');
+}
+
+export function loadPrompt(): string {
+  const promptPath = getPromptPath();
 
   if (!existsSync(promptPath)) {
     const err = new Error(`Prompt file not found: ${promptPath}`) as PromptLoadError;

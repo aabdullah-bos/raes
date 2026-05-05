@@ -7,6 +7,8 @@ import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType 
 import { runExecutionLoop } from './execution-loop.ts';
 import { runReviewLoop } from './review-loop.ts';
 import type { Provider } from './provider.ts';
+import { getPromptPath } from './prompt.ts';
+import { runSlicePreflight } from './slice-preflight.ts';
 
 const VERSION = '0.1.0';
 
@@ -26,6 +28,7 @@ Options:
   -n, --show-next-slice    Print full details of the next unchecked slice
   -p, --print-artifact     Print the content of a named RAES artifact to stdout
   -e, --execute-next-slice Execute the next unchecked slice (Execution or Review loop)
+      --dry-run            Preflight --execute-next-slice without provider submission or writes
       --flag               Register an ambiguity, blocking issue, or known problem
       --history            List most recent N executed slices
       --version            Show version
@@ -38,6 +41,7 @@ const KNOWN_FLAGS = new Set([
   '--show-next-slice', '-n',
   '--print-artifact', '-p',
   '--execute-next-slice', '-e',
+  '--dry-run',
   '--flag',
   '--history',
   '--version',
@@ -73,6 +77,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   }
 
   let printArtifactName: string | undefined;
+  let dryRun = false;
 
   {
     let i = 0;
@@ -96,6 +101,9 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
           i += 2;
           continue;
         }
+        if (arg === '--dry-run') {
+          dryRun = true;
+        }
       } else {
         err(`error: unexpected argument: ${arg}`);
         err(`       run 'raes-execute --help' for usage`);
@@ -103,6 +111,12 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       }
       i++;
     }
+  }
+
+  if (dryRun && !(argv.includes('--execute-next-slice') || argv.includes('-e'))) {
+    err(`error: --dry-run is only supported with --execute-next-slice`);
+    err(`       usage: --execute-next-slice --dry-run`);
+    return { exitCode: 1 };
   }
 
   if (argv.includes('--check-config') || argv.includes('-c')) {
@@ -242,8 +256,25 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     }
     const loopType = determineLoopType(nextSlice);
     const loopName = loopType === 'review' ? 'Review Loop' : 'Execution Loop';
+    const promptPath = getPromptPath();
+    const writeAccess = config.provider.sandbox?.write_access !== false;
     out(`Next:        ${nextSlice.label}`);
     out(`Loop:        ${loopName}`);
+    if (dryRun) {
+      const preflight = runSlicePreflight(config, cwd, io.loadPrompt);
+      if (!preflight.ok) {
+        for (const line of preflight.errors) {
+          err(line);
+        }
+        return { exitCode: 2 };
+      }
+      out(`Provider:    ${config.provider.name}`);
+      out(`Prompt:      ${promptPath}`);
+      out(`Pipeline:    ${pipelinePath}`);
+      out(`WriteAccess: ${writeAccess ? 'enabled' : 'disabled'}`);
+      out(`Dry run:     provider submission skipped; no artifacts written`);
+      return { exitCode: 0 };
+    }
     if (loopType === 'execution') {
       return runExecutionLoop(nextSlice, config, cwd, io, {
         provider: io.provider,

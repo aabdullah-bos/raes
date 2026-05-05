@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { rmSync, readFileSync } from 'node:fs';
 import { main } from '../src/cli.ts';
 import type { Provider } from '../src/provider.ts';
+import { getPromptPath } from '../src/prompt.ts';
 
 const ALL_ARTIFACT_PATHS = [
   'docs/prd.md',
@@ -49,6 +50,20 @@ async function makeTempProject(withConfig: boolean): Promise<string> {
 function testProvider(output = 'agent output'): Provider {
   return {
     submit: async () => ({ output }),
+  };
+}
+
+function testProviderSpy(output = 'agent output') {
+  let calls = 0;
+  const provider: Provider = {
+    submit: async () => {
+      calls += 1;
+      return { output };
+    },
+  };
+  return {
+    provider,
+    getCalls: () => calls,
   };
 }
 
@@ -989,6 +1004,97 @@ test('--execute-next-slice exits 2 when pipeline file is unreadable', async () =
     const { exitCode } = await main(['--execute-next-slice'], { err: (l) => errs.push(l), cwd: dir });
     assert.equal(exitCode, 2);
     assert.ok(errs.join('\n').includes('pipeline'), 'expected pipeline error message');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice --dry-run prints preflight output for execution slices without provider submission or writes', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  const providerSpy = testProviderSpy();
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice', '--dry-run'],
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        cwd: dir,
+        provider: providerSpy.provider,
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('Implement the next feature'), 'expected slice label in dry-run output');
+    assert.ok(full.includes('Execution Loop'), 'expected loop type in dry-run output');
+    assert.ok(full.includes('anthropic'), 'expected provider name in dry-run output');
+    assert.ok(full.includes(join(dir, 'docs/pipeline.md')), 'expected pipeline path in dry-run output');
+    assert.ok(full.includes(getPromptPath()), 'expected prompt source path in dry-run output');
+    assert.ok(full.includes('enabled'), 'expected write access mode in dry-run output');
+    assert.equal(providerSpy.getCalls(), 0, 'expected dry-run to skip provider submission');
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement the next feature'),
+      'expected dry-run to leave the pipeline unchanged',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice --dry-run prints preflight output for review slices without provider submission or writes', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_REVIEW_SLICE);
+  const providerSpy = testProviderSpy();
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice', '--dry-run'],
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        cwd: dir,
+        provider: providerSpy.provider,
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('Implement Review Loop for --execute-next-slice'), 'expected slice label in dry-run output');
+    assert.ok(full.includes('Review Loop'), 'expected review loop type in dry-run output');
+    assert.equal(providerSpy.getCalls(), 0, 'expected dry-run to skip provider submission');
+    const pipelineContent = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(
+      pipelineContent.includes('- [ ] Slice 2: Implement Review Loop for --execute-next-slice'),
+      'expected dry-run to leave the review slice unchecked',
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice --dry-run exits 2 on prompt load failure', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  const providerSpy = testProviderSpy();
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(
+      ['--execute-next-slice', '--dry-run'],
+      {
+        out: () => {},
+        err: (line) => errs.push(line),
+        cwd: dir,
+        provider: providerSpy.provider,
+        loadPrompt: () => {
+          const error = new Error('Prompt file not found: fake') as Error & { fix?: string };
+          error.fix = 'Create the prompt file';
+          throw error;
+        },
+      },
+    );
+    assert.equal(exitCode, 2);
+    assert.ok(errs.join('\n').includes('Prompt file not found'), 'expected prompt failure in stderr');
+    assert.equal(providerSpy.getCalls(), 0, 'expected dry-run to fail before provider submission');
   } finally {
     rmSync(dir, { recursive: true });
   }

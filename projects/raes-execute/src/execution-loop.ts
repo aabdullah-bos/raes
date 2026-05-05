@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
-import { loadAllArtifacts, validateBoundaries } from './artifacts.ts';
 import { writeFileAtomic } from './io.ts';
-import { loadPrompt, type PromptLoadError } from './prompt.ts';
+import { loadPrompt } from './prompt.ts';
 import { createProvider, type Provider } from './provider.ts';
+import { runSlicePreflight } from './slice-preflight.ts';
 
 interface LoopIO {
   out: (line: string) => void;
@@ -59,41 +59,17 @@ export async function runExecutionLoop(
   const provider = deps.provider ?? createProvider(config);
   const readPrompt = deps.loadPrompt ?? loadPrompt;
 
-  // Load all artifacts and validate boundaries before any confirmation
-  const { artifacts, errors: loadErrors } = loadAllArtifacts(config, cwd);
-  if (loadErrors.length > 0 || !artifacts) {
-    for (const e of loadErrors) {
-      err(`error: ${e}`);
+  const preflight = runSlicePreflight(config, cwd, readPrompt);
+  if (!preflight.ok) {
+    for (const line of preflight.errors) {
+      err(line);
     }
     return { exitCode: 2 };
   }
-
-  const violations = validateBoundaries(artifacts);
-  if (violations.length > 0) {
-    err(`error: artifact boundary violations detected — execution halted`);
-    for (const v of violations) {
-      err(`  artifact: ${v.path} [${v.role}]`);
-      err(`  issue:    ${v.issue}`);
-      err(`  evidence: ${v.evidence}`);
-      err('');
-    }
-    return { exitCode: 2 };
-  }
+  const prompt = preflight.prompt;
 
   out(`Boundaries:  ok`);
   out('');
-
-  let prompt: string;
-  try {
-    prompt = readPrompt();
-  } catch (e) {
-    err(`error: ${(e as Error).message}`);
-    const fix = (e as Partial<PromptLoadError>).fix;
-    if (typeof fix === 'string' && fix.length > 0) {
-      err(`fix: ${fix}`);
-    }
-    return { exitCode: 2 };
-  }
 
   const result = await provider.submit(prompt);
   if (result.error) {

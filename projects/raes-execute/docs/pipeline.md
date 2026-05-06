@@ -1,76 +1,3 @@
-# RAES Execute
-
-## Purpose
-
-RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-assisted software development by executing one slice of work at a time. It ensures each decision and artifact stays in its proper place, prevents drift from project intent, and enforces RAES workflow constraints at every step. The tool is designed for engineers and operators using the RAES methodology to produce reliable, testable outcomes with minimal execution drift and maximum transparency into project state.
-
----
-
-## Invariants
-
-### Product Invariants
-
-* **Single-Slice Execution:** Each CLI invocation executes exactly one bounded slice of work. Multi-slice or batch execution is explicitly out of scope; users invoke the tool once per slice advancement.
-* **Artifact Boundary Discipline:** Artifacts are updated only in their correct roles as defined by RAES reference. Constraints, rationale, product intent, and system design must never be mingled or overwritten outside their proper boundaries.
-* **No Artifact Reinterpretation:** The tool does not merge, overwrite, or reinterpret artifact files outside the strict rules defined in RAES. All writes are narrowly scoped to the slice being executed.
-* **Halt on Ambiguity:** If any artifact is missing, ambiguous, conflicting, or violates boundary rules, execution halts immediately with actionable error output. No work proceeds until the human resolves the issue and confirms continuation.
-* **Durable Configuration:** raes.config.yaml is the single source of truth for project structure, artifact paths, slice definitions, and milestones. The tool validates it on every invocation and refuses to proceed if it is invalid or references missing artifacts.
-
-### Drift Guards
-
-* **Boundary Validation:** Before and during execution, the tool validates that no artifact references or updates cross defined boundaries (e.g., system.md constraints must align with decisions.md; product intent in prd.md must not be restated as system constraint).
-* **Safe I/O:** All artifact writes are atomic; partial writes or corrupted state is prevented by using transactional or temporary-file patterns.
-* **Forced Clarity on Unknowns:** If a constraint is added to decisions.md but not promoted to system.md, or vice versa, the tool warns and optionally blocks advancement, forcing explicit team resolution.
-* **History & Auditability:** Every slice execution, flag, and artifact change is logged with timestamp, type, and scope so drift or skipped steps can be detected in review.
-* **No Bypass of Execution Flow:** Core RAES execution flow (Execution Loop or Review Loop, as determined by slice type) cannot be skipped or altered by CLI options; the tool enforces the loop in full.
-
----
-
-## Known Contracts
-
-* **Input Contract:** RAES Execute expects a valid RAES-initialized project directory containing:
-  * `raes.config.yaml` (validated against schema)
-  * All artifact files referenced in config (prd.md, system.md, decisions.md, and any custom artifacts defined)
-  * Slice definitions and milestone structure within config, following RAES reference format
-
-* **Output Contract:** RAES Execute produces:
-  * Updated artifact files (only in their correct roles and scopes)
-  * Updated status and history records (stored locally in project directory, e.g., .raes/history.log, .raes/status.json)
-  * CLI output to stdout (help, status, lists, artifact contents, error messages)
-  * Optionally, flags and ambiguity records in a machine-readable format for later ingestion
-
-* **Artifact Schema Contract:** All artifacts updated by RAES Execute conform to the RAES reference schema (document structure, metadata, section ordering). The tool does not allow deviation from this schema.
-
-* **Slice Definition Contract:** Slices are defined in raes.config.yaml and include:
-  * Type (Execution Loop or Review Loop)
-  * Assignee / Accountable party
-  * Goal and acceptance criteria
-  * Constraints and related artifacts
-  * Milestone association
-  * Completion status (checked/unchecked)
-
-* **Integration with RAES Init:** Outputs of RAES Init (initial config, artifact templates, milestone structure) must match the expected input contract for RAES Execute. The two tools share a common schema and directory structure.
-
-* **Optional Future Integration with RAES Discover:** When brownfield flow is live, RAES Execute may accept input from RAES Discover for discovering existing constraints and artifacts in legacy codebases. The integration point and data format are TBD.
-
----
-
-## Unknowns
-
-* **Third-Party CLI Runner Support:** The extent to which RAES Execute should support scripting via shell, npm, Python, or other environments is not yet defined. Minimal interface is planned (stdout, exit codes, machine-readable output), but deeper integration patterns (e.g., plugins, hooks, environment variables) are deferred.
-
-* **Extensibility for New Artifact Types:** While the tool is designed to be extensible for new artifact types, the mechanism for registering custom artifacts and their validation rules is not yet finalized. Current scope covers core RAES artifacts (prd, system, decisions); support for user-defined artifact types is future work.
-
-* **Telemetry & Data Collection:** Whether and how to collect anonymized invocation and error data for product improvement is not finalized. Current scope assumes local-only data; any remote telemetry requires explicit user consent and is out of v1 scope.
-
-* **Multi-Team / Multi-Repo Orchestration:** Support for running RAES Execute across multiple projects or coordinating slices across team boundaries is not in scope for v1. Each project is assumed to be independent.
-
-* **Conflict Resolution Workflow:** The exact interactive flow for resolving flagged ambiguities or boundary violations (e.g., prompts, approval workflows, automatic remediation suggestions) is underspecified and will be refined during Milestone 3 based on early testing.
-
-* **Performance Baselines for Large Projects:** The tool is estimated to handle projects with <500 slices per project. Behavior and performance for larger projects (>500 slices, >1000 artifacts) is not yet tested or specified.
-
----
-
 ## Slice Backlog
 
 - [x] Slice 1: Scaffold CLI project and implement foundational command parser with --help, error-handling for missing/extra params, and support for short/long options (subcommands TBD).
@@ -245,6 +172,205 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
     - Any conflicts found and how they were resolved or flagged
   - No new slices need to be generated in this step
 
+- [x] Slice B1: Strip `pipeline.md` to backlog and handoff state only
+
+  **Loop:** Execution Loop
+  **Artifacts read:** `docs/raes-reference.md` (File Boundaries section), `pipeline.md`
+  **Artifacts written:** `pipeline.md`, `decisions.md`
+  **Tests:** Verify `pipeline.md` contains only permitted headings per `raes-reference.md`
+
+  **Steps:**
+
+  1. Read the File Boundaries section of `docs/raes-reference.md`. This is the
+     sole authority for what headings are permitted and forbidden in `pipeline.md`.
+
+  2. Read `pipeline.md` in full. For each heading present, check it against the
+     permitted heading list for `pipeline.md` in `raes-reference.md`.
+
+  3. For each forbidden heading found, record in a working list:
+     - The heading name
+     - The destination artifact as specified in `raes-reference.md`
+     - The full content under that heading
+
+  4. Remove all forbidden headings and their content from `pipeline.md`.
+     Do not place them in their destination artifacts yet — that is the work
+     of B2 and B3. Write the working list as a comment block at the top of
+     a temporary file `docs/b1-displaced-content.md` so B2 and B3 have an
+     explicit handoff rather than relying on this conversation.
+
+  5. Verify the resulting `pipeline.md` contains only headings from the
+     permitted list in `raes-reference.md`.
+
+  6. Record in `decisions.md`: confirmation that `pipeline.md` has been
+     scoped to backlog and handoff state only, with date.
+
+  7. Append handoff notes to `pipeline.md` recording what was removed,
+     where displaced content is staged, and that B2 and B3 must consume
+     `docs/b1-displaced-content.md` before it is deleted.
+
+  **Acceptance criteria:**
+  - `pipeline.md` contains only `## Slice Backlog` and `## Handoff Notes`
+  - All removed content is staged in `docs/b1-displaced-content.md` with
+    destination artifact noted for each section per `raes-reference.md`
+  - `raes-execute --check-config` passes
+
+
+- [ ] Slice B2: Reconstruct `system.md` from `raes-reference.md` and staged content
+
+  **Loop:** Execution Loop
+  **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),
+    `docs/b1-displaced-content.md`, `system.md`
+  **Artifacts written:** `system.md`, `decisions.md`
+  **Tests:** Verify `system.md` contains only permitted headings per `raes-reference.md`
+
+  **Steps:**
+
+  1. Read the File Boundaries section of `docs/raes-reference.md`. This is the
+     sole authority for what headings are permitted and forbidden in `system.md`.
+
+  2. Read `docs/b1-displaced-content.md`. Identify all sections marked with
+     destination `system.md`.
+
+  3. Read the current `system.md` in full. For each section in the displaced
+     content marked for `system.md`, determine whether equivalent content
+     already exists in `system.md`.
+
+  4. For each displaced section:
+     - If no equivalent exists in `system.md`: insert it under the correct
+       permitted heading as defined in `raes-reference.md`.
+     - If an equivalent exists: compare the two versions. Keep the more
+       specific and accurate version. Record the resolution in `decisions.md`.
+     - If the content is a resolved Unknown (already answered in `decisions.md`):
+       do not insert it into `system.md`. Record its resolution in `decisions.md`
+       with today's date and remove it from the displaced content list.
+
+  5. Scan `system.md` for any headings that are on the forbidden list in
+     `raes-reference.md`. Flag any found — do not proceed past this check
+     if violations remain.
+
+  6. Verify the resulting `system.md` contains only permitted headings.
+
+  7. Record in `decisions.md`: what was merged, what was discarded as duplicate,
+     and what Unknowns were closed, each with date and rationale.
+
+  8. Append handoff notes to `pipeline.md`. Mark `docs/b1-displaced-content.md`
+     sections consumed by this slice as done. Note remaining sections for B3.
+
+  **Acceptance criteria:**
+  - `system.md` contains only headings from the permitted list in `raes-reference.md`
+  - No content that belongs in `system.md` remains in `b1-displaced-content.md`
+  - All resolved Unknowns are recorded in `decisions.md` with date
+  - No duplicate constraint definitions exist between `system.md` and any
+    other artifact
+  - `raes-execute --check-config` passes
+
+
+- [ ] Slice B3: Reconstruct `execution-guidance.md` from `raes-reference.md` and staged content
+
+  **Loop:** Execution Loop
+  **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),
+    `docs/b1-displaced-content.md`, `execution-guidance.md`, `system.md`
+  **Artifacts written:** `execution-guidance.md`, `decisions.md`
+  **Tests:** Verify `execution-guidance.md` contains only permitted headings
+    per `raes-reference.md`
+
+  **Steps:**
+
+  1. Read the File Boundaries section of `docs/raes-reference.md`. This is the
+     sole authority for what headings are permitted and forbidden in
+     `execution-guidance.md`.
+
+  2. Read `docs/b1-displaced-content.md`. Confirm all sections are now marked
+     as consumed (by B2) or marked with destination `execution-guidance.md`.
+     If any sections remain unmarked, flag before proceeding.
+
+  3. Read the current `execution-guidance.md` in full. Identify the six-item
+     `## Invariants` section. Per `raes-reference.md`, Invariants belong in
+     `system.md`, not here. Verify B2 has already placed them there before
+     removing them from this file.
+
+  4. Remove `## Invariants` from `execution-guidance.md` only after confirming
+     the content is present in `system.md`.
+
+  5. Move `## Definition of Done` from `system.md` to `execution-guidance.md`
+     under the permitted headings for this file. Record the move in `decisions.md`.
+
+  6. Fix the Milestone 1 guidance:
+     - Remove the CLI library options list (Click, Commander.js, Cobra) —
+       the decision is already recorded in `decisions.md` (TypeScript + Node.js).
+       Replace with a reference to that decision.
+     - Correct the performance target from 100ms to 200ms to match the
+       contract in `decisions.md`.
+
+  7. Fix Workflow Rules 3 and 4 (Execution Loop and Review Loop descriptions):
+     - Replace the circular reference ("according to RAES execution loop rules")
+       with the explicit loop sequence:
+       Execution Loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+       Review Loop: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
+
+  8. Scan `execution-guidance.md` for any headings on the forbidden list in
+     `raes-reference.md`. Flag any found.
+
+  9. Delete `docs/b1-displaced-content.md` once all sections are confirmed
+     consumed. Record deletion in handoff notes.
+
+  10. Record in `decisions.md`: what was moved, what was corrected, and why,
+      with date.
+
+  11. Append handoff notes to `pipeline.md` confirming B1 staged content is
+      fully consumed and the temporary file has been deleted.
+
+  **Acceptance criteria:**
+  - `execution-guidance.md` contains only permitted headings per `raes-reference.md`
+  - `## Invariants` is absent from `execution-guidance.md`
+  - `## Definition of Done` is present in `execution-guidance.md`
+  - Workflow Rules 3 and 4 contain the explicit loop sequences
+  - Milestone 1 references the decisions.md entry for toolchain rather than
+    listing alternatives
+  - `docs/b1-displaced-content.md` has been deleted
+  - `raes-execute --check-config` passes
+
+
+- [ ] Slice B4: Verify boundary compliance across all artifacts
+
+  **Loop:** Review Loop
+  **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),
+    all six project artifacts
+  **Artifacts written:** `pipeline.md` (handoff notes only)
+  **Tests:** `raes-execute --check-config` and `raes-execute --execute-next-slice --dry-run`
+
+  **Steps:**
+
+  1. Read the File Boundaries section of `docs/raes-reference.md`.
+
+  2. For each artifact, check every heading against its permitted and forbidden
+     lists in `raes-reference.md`. This is the same check the validator runs —
+     do it manually first to confirm the automated check will pass.
+
+  3. Verify the four promotion rules in `raes-reference.md` are satisfied:
+     - No Unknown in `system.md` is already answered in `decisions.md`
+     - No constraint exists only in `decisions.md` without a corresponding
+       `system.md` entry where one is required
+     - No content exists only in this conversation or in a temporary file
+
+  4. Run `raes-execute --check-config`. It must pass with no errors.
+
+  5. Run `raes-execute --execute-next-slice --dry-run`. Confirm no artifact
+     boundary violations are reported.
+
+  6. If any violation is found in steps 2–5, halt. Record the violation as
+     a flag. Do not mark this slice complete until all violations are cleared.
+
+  7. Append handoff notes confirming all artifacts are boundary-compliant
+     and the dry-run passed. Note that Slice C (raes-init template updates)
+     is now unblocked.
+
+  **Acceptance criteria:**
+  - All six artifacts contain only permitted headings per `raes-reference.md`
+  - `raes-execute --check-config` passes
+  - `raes-execute --execute-next-slice --dry-run` reports no boundary violations
+  - No content from the B1 displaced content staging file remains anywhere
+
 - [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
     on PATH before or during subprocess spawn, and return a structured
@@ -298,6 +424,20 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice B1 — 2026-05-06
+
+**Pipeline scope corrected.** Removed the forbidden `## Purpose`, `## Invariants`, `## Known Contracts`, and `## Unknowns` sections from `pipeline.md` so the file now contains only backlog and handoff state, per `docs/raes-reference.md` Section 3a.
+
+**Displaced content staged for follow-on slices.** The removed sections were copied into `docs/b1-displaced-content.md` with explicit destination metadata:
+- `## Purpose` staged for `docs/prd.md`
+- `## Invariants`, `## Known Contracts`, and `## Unknowns` staged for `docs/system.md`
+
+**Validation added.** `tests/project-docs.test.ts` now asserts that the project `docs/pipeline.md` uses only the permitted top-level headings `## Slice Backlog` and `## Handoff Notes`.
+
+**FLAG — Config/source mismatch (open):** `docs/raes.config.yaml` does not declare `docs/raes-reference.md` as an authoritative artifact, but Slice B1 depends on that shared file as the source of truth for pipeline boundaries. This slice proceeded because B1 names `docs/raes-reference.md` explicitly, but future workflow slices should either declare this shared dependency in config or continue to name it explicitly in the backlog.
+
+**Next operator:** Slice B2 is next. Consume `docs/b1-displaced-content.md` before making any further boundary edits, and do not delete it until both B2 and B3 have fully absorbed the staged sections.
 
 ### Slice 13r-file-rights — 2026-05-06
 

@@ -449,6 +449,31 @@ test('extractConfig: provider.name openai returns config with no errors', () => 
   assert.equal(errors.length, 0);
   assert.ok(config, 'expected config');
   assert.equal(config.provider.name, 'openai');
+  assert.equal(config.provider.openai?.transport, 'exec');
+});
+
+test('extractConfig: openai provider defaults transport to exec when omitted', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'openai' } };
+  const { config, errors } = extractConfig(data);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.openai?.transport, 'exec');
+});
+
+test('extractConfig: openai provider accepts explicit app_server transport', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: {
+      name: 'openai',
+      openai: {
+        transport: 'app_server',
+      },
+    },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.openai?.transport, 'app_server');
 });
 
 test('extractConfig: missing provider section reports error with fix', () => {
@@ -472,6 +497,22 @@ test('extractConfig: unknown provider.name reports error with fix', () => {
   const { config, errors } = extractConfig(data as Record<string, unknown>);
   assert.equal(config, undefined);
   assert.ok(errors.some((e) => e.field.includes('provider.name')));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: invalid openai transport reports error with fix', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: {
+      name: 'openai',
+      openai: {
+        transport: 'websocket',
+      },
+    },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field === 'provider.openai.transport'));
   assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
 });
 

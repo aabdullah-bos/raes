@@ -14,6 +14,9 @@ export interface RaesConfig {
   provider: {
     name: 'anthropic' | 'openai';
     model?: string;
+    openai?: {
+      transport: 'exec' | 'app_server';
+    };
     sandbox?: {
       write_access?: boolean;
     };
@@ -208,6 +211,28 @@ export function extractConfig(
         message: `unknown provider '${providerName}' — raes.config.yaml`,
         fix: "Set 'provider.name' to one of: anthropic, openai",
       });
+    } else if (providerName === 'openai') {
+      const openaiRaw = providerRaw['openai'];
+      if (openaiRaw !== undefined && !isObject(openaiRaw)) {
+        errors.push({
+          field: 'provider.openai',
+          message: "invalid 'provider.openai' section — raes.config.yaml",
+          fix: "Set 'provider.openai.transport' to 'exec' or 'app_server', or remove the 'openai:' block to use the default transport",
+        });
+      } else if (isObject(openaiRaw)) {
+        const transport = openaiRaw['transport'];
+        if (
+          transport !== undefined &&
+          transport !== 'exec' &&
+          transport !== 'app_server'
+        ) {
+          errors.push({
+            field: 'provider.openai.transport',
+            message: `unknown OpenAI transport '${String(transport)}' — raes.config.yaml`,
+            fix: "Set 'provider.openai.transport' to 'exec' or 'app_server'",
+          });
+        }
+      }
     }
   }
 
@@ -215,6 +240,9 @@ export function extractConfig(
 
   const provider = data['provider'] as Record<string, unknown>;
   const sandboxRaw = provider['sandbox'];
+  const openaiRaw = isObject(provider['openai'])
+    ? provider['openai'] as Record<string, unknown>
+    : undefined;
   const sandboxObj = isObject(sandboxRaw) ? (sandboxRaw as Record<string, unknown>) : undefined;
   let writeAccess: boolean | undefined;
   if (sandboxObj !== undefined) {
@@ -239,6 +267,15 @@ export function extractConfig(
     provider: {
       name: provider['name'] as 'anthropic' | 'openai',
       ...(nonEmptyString(provider['model']) ? { model: provider['model'] as string } : {}),
+      ...(
+        provider['name'] === 'openai'
+          ? {
+              openai: {
+                transport: (openaiRaw?.['transport'] as 'exec' | 'app_server' | undefined) ?? 'exec',
+              },
+            }
+          : {}
+      ),
       ...(sandboxObj !== undefined
         ? { sandbox: writeAccess !== undefined ? { write_access: writeAccess } : {} }
         : {}),

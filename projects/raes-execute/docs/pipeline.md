@@ -385,7 +385,7 @@
   - No code changes in this slice.
   - No tests required for this slice.
 
-- [ ] Slice 13h: Extend provider config schema for OpenAI app-server mode.
+- [x] Slice 13h: Extend provider config schema for OpenAI app-server mode.
   - Add config support for selecting the OpenAI transport mode under `provider`, for example `provider.openai.transport: exec | app_server`, while preserving current config compatibility.
   - Keep `exec` as the default unless a durable decision is recorded to change the default.
   - Validate the new config fields and emit actionable fix strings on invalid values.
@@ -558,6 +558,33 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13h — 2026-05-06
+
+**Execution completed.** Added OpenAI transport config parsing and validation in `src/config.ts` with backward-compatible defaulting to `provider.openai.transport: exec` when `provider.name` is `openai`.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/config.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/cli.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/config.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+
+**Tests added/updated:** `tests/config.test.ts` now covers implicit OpenAI transport defaulting, explicit `app_server`, invalid transport values with fix guidance, and legacy config compatibility without the new field.
+
+**Validation run:**
+- `npm test`
+- `npm run typecheck`
+- `node --experimental-strip-types src/cli.ts --check-config --config docs/raes.config.yaml`
+
+**Operational notes for next operator:** No provider factory or runtime behavior changed in this slice; OpenAI still resolves to the existing exec-mode provider. Slice 13i should introduce the session-capable abstraction before any app-server transport implementation is attempted.
 
 ### Slice 13g — 2026-05-06
 

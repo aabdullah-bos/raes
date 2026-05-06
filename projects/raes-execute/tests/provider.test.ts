@@ -469,6 +469,130 @@ test('CodexAppServerSession: correlates requests, streams notifications, and ret
   await closePromise;
 });
 
+test('CodexAppServerSession: falls back to accumulated agent-message deltas when turn output_text is empty', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
+  mock.emitStdout({
+    method: 'item/agentMessage/delta',
+    params: {
+      item: { id: 'item-1', type: 'agentMessage' },
+      delta: { text: 'Current Slice\n\nRecovered from agent delta output.' },
+    },
+  });
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed' } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, 'Current Slice\n\nRecovered from agent delta output.');
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: prefers turn output_text over accumulated agent-message deltas when both are present', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.emitStdout({
+    method: 'item/agentMessage/delta',
+    params: {
+      item: { id: 'item-1', type: 'agentMessage' },
+      delta: { text: 'delta output that should lose' },
+    },
+  });
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed', output_text: 'authoritative turn output' } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, 'authoritative turn output');
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: falls back to completed agentMessage text when turn output_text is empty', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'item/completed',
+    params: {
+      item: {
+        type: 'agentMessage',
+        id: 'msg-1',
+        text: 'Current Slice\n\nRecovered from completed agentMessage text.',
+      },
+    },
+  });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed' } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, 'Current Slice\n\nRecovered from completed agentMessage text.');
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
 test('CodexAppServerSession: normalizes supported app-server notifications into structured RAES progress events', async () => {
   const events: ProviderProgressEvent[] = [];
   const mock = makeAppServerSpawnMock();
@@ -1039,7 +1163,7 @@ test('CodexAppServerSession: incomplete turn returns a structured agent executio
   const result = await turnPromise;
   assert.equal(result.output, '');
   assert.match(result.error ?? '', /agent execution failure/i);
-  assert.match(result.error ?? '', /incomplete turn/i);
+  assert.match(result.error ?? '', /agent turn exceeded 10ms without turn\/completed/i);
 
   const closePromise = session.close();
   mock.reply({});
@@ -1047,7 +1171,47 @@ test('CodexAppServerSession: incomplete turn returns a structured agent executio
   await closePromise;
 });
 
-test('CodexAppServerSession: production default incomplete-turn timeout is 120 seconds', async () => {
+test('CodexAppServerSession: incomplete turn timeout reports last observed event context', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(
+    makeConfig('openai', true, 'app_server'),
+    '/repo',
+    mock.spawnFn,
+    { requestTimeoutMs: 25, turnCompletionTimeoutMs: 10 },
+  );
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/diff/updated',
+    params: { diff: { files: [{ path: 'src/provider.ts', change: 'modified' }] } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /last event was turn\/diff\/updated/i);
+  assert.match(result.error ?? '', /last activity was \d+ms ago/i);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: production default incomplete-turn timeout is 300 seconds', async () => {
   const mock = makeAppServerSpawnMock();
   const session = new CodexAppServerSession(
     makeConfig('openai', true, 'app_server'),

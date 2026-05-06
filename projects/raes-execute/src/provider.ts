@@ -254,7 +254,7 @@ abstract class OneShotProvider implements Provider {
 
 export class CodexAppServerSession implements ProviderSession {
   private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
-  private static readonly DEFAULT_TURN_COMPLETION_TIMEOUT_MS = 120_000;
+  private static readonly DEFAULT_TURN_COMPLETION_TIMEOUT_MS = 300_000;
 
   private config: RaesConfig;
   private cwd: string;
@@ -278,6 +278,10 @@ export class CodexAppServerSession implements ProviderSession {
         reject: (error: Error) => void;
         done: boolean;
         timeout?: NodeJS.Timeout;
+        lastActivityAt: number;
+        lastEventType?: string;
+        agentMessageDeltas: string[];
+        completedAgentMessageText?: string;
       }
     | undefined;
 
@@ -333,12 +337,10 @@ export class CodexAppServerSession implements ProviderSession {
         resolve,
         reject,
         done: false,
+        lastActivityAt: Date.now(),
+        agentMessageDeltas: [],
         timeout: setTimeout(() => {
-          this.finishActiveTurnWithError(
-            new Error(
-              `incomplete turn: timed out waiting for turn/completed after ${this.turnCompletionTimeoutMs}ms`,
-            ),
-          );
+          this.finishActiveTurnWithError(this.makeTurnTimeoutError());
         }, this.turnCompletionTimeoutMs),
       };
 
@@ -518,6 +520,9 @@ export class CodexAppServerSession implements ProviderSession {
       return;
     }
 
+    this.activeTurn.lastActivityAt = Date.now();
+    this.activeTurn.lastEventType = method;
+
     if (shouldEmitRawEvents(this.activeTurn.hooks)) {
       emitProgress(this.activeTurn.hooks, makeRawNotificationDebugEvent(method, params));
     }
@@ -536,8 +541,27 @@ export class CodexAppServerSession implements ProviderSession {
         this.finishActiveTurn({ output: '', error: message });
         return;
       }
-      this.finishActiveTurn({ output: extractCodexCompletedText(turn ?? {}) });
+      const completedText = extractCodexCompletedText(turn ?? {});
+      const completedAgentMessageText = this.activeTurn.completedAgentMessageText ?? '';
+      const fallbackText = this.activeTurn.agentMessageDeltas.join('');
+      this.finishActiveTurn({ output: completedText || completedAgentMessageText || fallbackText });
       return;
+    }
+
+    if (method === 'item/agentMessage/delta') {
+      const delta = extractDeltaText({ type: method, ...(params ?? {}) });
+      if (delta) {
+        this.activeTurn.agentMessageDeltas.push(delta);
+      }
+    }
+
+    if (method === 'item/completed') {
+      const event = { type: method, ...(params ?? {}) };
+      const item = readRecord(params?.['item']);
+      const agentMessageText = extractAgentMessageText(event);
+      if (summarizeCodexItemKind(item) === 'agent_message' && agentMessageText) {
+        this.activeTurn.completedAgentMessageText = agentMessageText;
+      }
     }
 
     const progress = normalizeAppServerEvent({ type: method, ...(params ?? {}) });
@@ -576,6 +600,18 @@ export class CodexAppServerSession implements ProviderSession {
     }
     this.activeTurn.resolve(formatCodexAppServerError(error));
     this.activeTurn = undefined;
+  }
+
+  private makeTurnTimeoutError(): Error {
+    const lastActivityAt = this.activeTurn?.lastActivityAt ?? Date.now();
+    const lastEventType = this.activeTurn?.lastEventType;
+    const idleMs = Math.max(0, Date.now() - lastActivityAt);
+    const activityDetail = lastEventType
+      ? `; last event was ${lastEventType}; last activity was ${idleMs}ms ago`
+      : '';
+    return new Error(
+      `incomplete turn: agent turn exceeded ${this.turnCompletionTimeoutMs}ms without turn/completed${activityDetail}`,
+    );
   }
 
   private handleProcessClose(code: number | null): void {
@@ -715,6 +751,15 @@ function extractCommandText(event: Record<string, unknown>): string | undefined 
     readNonEmptyString(event['command']) ??
     readNonEmptyString(event['tool_name']) ??
     readNonEmptyString(event['tool'])
+  );
+}
+
+function extractAgentMessageText(event: Record<string, unknown>): string | undefined {
+  const item = readRecord(event['item']);
+  return (
+    readNonEmptyString(item?.['text']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(readRecord(event['content'])?.['text'])
   );
 }
 

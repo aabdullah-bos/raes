@@ -29,3 +29,19 @@ test('loadPrompt: returns string containing REVIEW SLICE section header', () => 
   const prompt = loadPrompt();
   assert.ok(prompt.includes('REVIEW SLICE'), 'prompt should contain REVIEW SLICE section header');
 });
+
+test('loadPrompt: requires RAES_SUMMARY_START marker in final answer contract', () => {
+  const prompt = loadPrompt();
+  assert.ok(prompt.includes('RAES_SUMMARY_START'));
+});
+
+test('loadPrompt: requires RAES_SUMMARY_END marker in final answer contract', () => {
+  const prompt = loadPrompt();
+  assert.ok(prompt.includes('RAES_SUMMARY_END'));
+});
+
+test('loadPrompt: requires valid JSON summary block in final answer contract', () => {
+  const prompt = loadPrompt();
+  assert.ok(prompt.includes('valid JSON'));
+  assert.ok(prompt.includes('final answer must end'));
+});

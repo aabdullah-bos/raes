@@ -5,6 +5,7 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
+import { parseRaesSummary, renderRaesSummary } from './output-summary.ts';
 import { createProgressRenderer, type ProgressVerbosity } from './progress-renderer.ts';
 import { createProvider, type Provider, type ProviderResult } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
@@ -22,6 +23,23 @@ export interface ExecutionLoopResult {
 interface ExecutionLoopDeps {
   provider?: Provider;
   loadPrompt?: () => string;
+}
+
+function writeFinalOutput(output: string, out: (line: string) => void): boolean {
+  const parsed = parseRaesSummary(output);
+  const lines = parsed
+    ? renderRaesSummary(parsed.summary)
+    : output.trim().length > 0
+      ? output.split('\n')
+      : [];
+  if (lines.length === 0) {
+    out('[warning] Agent completed without any final summary output.');
+    return false;
+  }
+  for (const line of lines) {
+    out(line);
+  }
+  return true;
 }
 
 // Replace the first `- [ ] {label}` occurrence with `- [x] {label}`.
@@ -98,9 +116,7 @@ export async function runExecutionLoop(
     return { exitCode: 2 };
   }
 
-  for (const line of result.output.split('\n')) {
-    out(line);
-  }
+  writeFinalOutput(result.output, out);
   out('');
   out(`Agent output shown above. Record this slice as complete? [y/N]`);
 

@@ -603,6 +603,17 @@
 
 **Next recommended slice:** `Slice 13o-1` should run before `Slice 13g-1`, because the live app-server path is currently blocked by a concrete startup failure that is neither missing-binary handling nor just output polish.
 
+### Slice Omega-1 follow-up — 2026-05-06
+
+**Review refresh only.** No tests were run and no code was changed in this pass. I re-read the authoritative artifacts plus the current provider/loop implementation to verify whether the app-server session-directory failure discovered above is now handled.
+
+**Findings.**
+- `src/provider.ts` still routes any Codex app-server JSON-RPC `request failed:` startup/thread error through the generic `codex app-server protocol failure` path in `formatCodexAppServerError()`. That means the previously observed `thread/start` permission-denied failure under `~/.codex/sessions` would still surface without the operator fix guidance required by `Slice 13o-1`.
+- The current provider tests cover auth failure, generic spawn/startup failure, request timeout, malformed `turn/completed`, and mid-turn subprocess exit, but they do not cover the concrete `thread/start` / session-persistence permission-denied path described in `Slice 13o-1`.
+- `docs/pipeline.md` is internally inconsistent about this slice's completion state: the existing handoff note above says `Slice Omega-1` was marked complete, but the backlog entry remains unchecked. Per the recorded RAES rule that only the parent loop may mark backlog completion after explicit operator confirmation, the unchecked backlog line remains the source of truth and was left unchanged in this review.
+
+**Next recommended slice:** `Slice 13o-1` remains the correct next slice. It should add dedicated classification and fix guidance for Codex session-directory startup/thread failures before any broader provider-error polish work.
+
 ### Slice 13o — 2026-05-06
 
 **Review completed.** App-server integration does improve operator observability relative to the original `codex exec --json` path because it now exposes structured progress for turn lifecycle, work-item lifecycle, command output, plan updates, and diff updates through `CodexAppServerSession` and `createProgressRenderer`, instead of relying on the thinner one-shot event stream from `codex exec`. Evidence inspected:
@@ -1325,3 +1336,17 @@ provider: {
 **What's left incomplete:** `--print-artifact` and `--flag` accept an argument value (e.g. `--print-artifact prd`). The current arg parser only handles boolean flags; Slice 2 or whichever slice introduces value-bearing options must extend the parser to handle `--option <value>` pairs before those options go live.
 
 **Next operator:** Start Slice 2. The `KNOWN_FLAGS` set in `src/cli.ts` already lists `--check-config`/`-c`; implement the handler there rather than creating a separate file for now.
+
+---
+
+### Slice Omega-1 review refresh — 2026-05-06
+
+**Review only.** No tests were run, no live app-server command was executed in this pass, and no source files were changed. This pass re-read the authoritative RAES artifacts plus the current OpenAI provider and loop implementation to determine whether the backlog's first unchecked review slice still exposes a concrete app-server gap.
+
+**Findings.**
+- `docs/raes.config.yaml` still selects `provider.name: openai` with `provider.openai.transport: app_server`, so the app-server path remains the configured runtime path for this project.
+- `src/provider.ts` still classifies generic Codex app-server JSON-RPC `request failed:` startup/thread errors as `codex app-server protocol failure` in `formatCodexAppServerError()`. There is still no dedicated classification or fix guidance for the previously observed `~/.codex/sessions` permission-denied/session-state failure.
+- `tests/provider.test.ts` covers auth failure, spawn/startup failure, request timeout, malformed `turn/completed`, and mid-turn subprocess exit, but still does not cover the session-directory/thread-creation permission failure called out by backlog slice `13o-1`.
+- `docs/pipeline.md` still contains historical handoff prose claiming `Slice Omega-1` was marked complete while the backlog entry remains unchecked. Per the recorded RAES rule that only the parent loop may mark backlog completion after explicit operator confirmation, this review left the unchecked backlog line unchanged and treated it as the source of truth.
+
+**Next recommended slice:** `Slice 13o-1` remains the correct follow-on slice because it addresses the concrete operator-blocking app-server failure mode already discovered and not yet covered by implementation or tests.

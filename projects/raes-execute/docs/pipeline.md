@@ -429,7 +429,7 @@
     - malformed payload handling
     - subprocess termination before clean shutdown
 
-- [ ] Slice 13k: Implement Codex app-server event normalization into RAES provider progress events.
+- [x] Slice 13k: Implement Codex app-server event normalization into RAES provider progress events.
   - Parse app-server notifications and normalize them into a stable RAES event model.
   - Support at minimum:
     - `turn/started`
@@ -558,6 +558,31 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13k — 2026-05-06
+
+**Execution completed.** Added explicit app-server notification normalization in `src/provider.ts` so `CodexAppServerSession` now emits a stable RAES progress model for `turn/started`, `item/started`, `item/completed`, `item/agentMessage/delta`, `item/reasoning/summaryTextDelta`, `item/commandExecution/outputDelta`, `turn/plan/updated`, and `turn/diff/updated`. Unsupported notifications now degrade safely to a generic status event without failing the turn.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+
+**Tests added/updated:** `tests/provider.test.ts` now covers one fixture per required notification family, asserts normalized structured progress events, verifies unsupported notifications degrade safely, and updates the existing session-streaming expectation to the richer event shape.
+
+**Validation run:**
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** Loop rendering still only uses `kind` and `text`. Slice 13l should consume the new structured fields (`phase`, `item`, `command`, `delta`, `plan`, `files`, `eventType`) when adding richer operator-visible progress output, and should define coalescing/truncation rules there rather than in the provider layer.
 
 ### Slice 13j — 2026-05-06
 

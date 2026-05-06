@@ -443,14 +443,203 @@ test('CodexAppServerSession: correlates requests, streams notifications, and ret
 
   const result = await turnPromise;
   assert.deepEqual(events, [
-    { kind: 'status', text: 'Agent turn started' },
-    { kind: 'status', text: 'reasoning started' },
+    { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'turn/started' },
+    {
+      kind: 'status',
+      text: 'reasoning started',
+      phase: 'item',
+      eventType: 'item/started',
+      item: { kind: 'reasoning' },
+    },
   ]);
   assert.equal(result.output, 'done');
 
   const closePromise = session.close();
   const unsubscribe = JSON.parse(mock.stdinWritten[4].trim()) as Record<string, unknown>;
   assert.equal(unsubscribe.method, 'thread/unsubscribe');
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: normalizes supported app-server notifications into structured RAES progress events', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice', {
+    onProgress: (event) => events.push(event),
+  });
+  await Promise.resolve();
+
+  mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
+  mock.emitStdout({ method: 'item/started', params: { item: { id: 'item-1', type: 'reasoning' } } });
+  mock.emitStdout({
+    method: 'item/agentMessage/delta',
+    params: {
+      item: { id: 'item-2', type: 'agent_message' },
+      delta: { text: 'Thinking through the boundary checks' },
+    },
+  });
+  mock.emitStdout({
+    method: 'item/reasoning/summaryTextDelta',
+    params: {
+      item: { id: 'item-1', type: 'reasoning' },
+      delta: { text: 'Summarized plan update' },
+    },
+  });
+  mock.emitStdout({
+    method: 'item/commandExecution/outputDelta',
+    params: {
+      item: { id: 'item-3', type: 'command_execution', command: 'npm test' },
+      delta: { text: 'ok 12 tests\n' },
+    },
+  });
+  mock.emitStdout({
+    method: 'turn/plan/updated',
+    params: {
+      plan: [{ step: 'Run provider tests', status: 'completed' }],
+    },
+  });
+  mock.emitStdout({
+    method: 'turn/diff/updated',
+    params: {
+      diff: { files: [{ path: 'src/provider.ts', change: 'modified' }] },
+    },
+  });
+  mock.emitStdout({ method: 'item/completed', params: { item: { id: 'item-1', type: 'reasoning' } } });
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed', output_text: 'done' } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [
+    {
+      kind: 'status',
+      text: 'Agent turn started',
+      phase: 'turn',
+      eventType: 'turn/started',
+    },
+    {
+      kind: 'status',
+      text: 'reasoning started',
+      phase: 'item',
+      eventType: 'item/started',
+      item: { id: 'item-1', kind: 'reasoning' },
+    },
+    {
+      kind: 'message',
+      text: 'Thinking through the boundary checks',
+      phase: 'message',
+      eventType: 'item/agentMessage/delta',
+      item: { id: 'item-2', kind: 'agent_message' },
+      delta: 'Thinking through the boundary checks',
+    },
+    {
+      kind: 'message',
+      text: 'Summarized plan update',
+      phase: 'reasoning',
+      eventType: 'item/reasoning/summaryTextDelta',
+      item: { id: 'item-1', kind: 'reasoning' },
+      delta: 'Summarized plan update',
+    },
+    {
+      kind: 'tool',
+      text: 'npm test',
+      phase: 'command',
+      eventType: 'item/commandExecution/outputDelta',
+      item: { id: 'item-3', kind: 'command_execution' },
+      command: 'npm test',
+      delta: 'ok 12 tests\n',
+    },
+    {
+      kind: 'status',
+      text: 'Plan updated',
+      phase: 'plan',
+      eventType: 'turn/plan/updated',
+      plan: [{ step: 'Run provider tests', status: 'completed' }],
+    },
+    {
+      kind: 'status',
+      text: 'Diff updated',
+      phase: 'diff',
+      eventType: 'turn/diff/updated',
+      files: [{ path: 'src/provider.ts', change: 'modified' }],
+    },
+    {
+      kind: 'status',
+      text: 'reasoning completed',
+      phase: 'item',
+      eventType: 'item/completed',
+      item: { id: 'item-1', kind: 'reasoning' },
+    },
+  ]);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: unsupported notifications degrade safely without failing the turn', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice', {
+    onProgress: (event) => events.push(event),
+  });
+  await Promise.resolve();
+
+  mock.emitStdout({
+    method: 'turn/custom-progress',
+    params: { detail: 'something unsupported' },
+  });
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed', output_text: 'done' } },
+  });
+
+  const result = await turnPromise;
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [
+    {
+      kind: 'status',
+      text: 'Observed turn/custom-progress',
+      phase: 'unknown',
+      eventType: 'turn/custom-progress',
+    },
+  ]);
+
+  const closePromise = session.close();
   mock.reply({});
   mock.close(0);
   await closePromise;

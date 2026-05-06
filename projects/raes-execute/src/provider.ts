@@ -10,6 +10,16 @@ export interface ProviderResult {
 export interface ProviderProgressEvent {
   kind: 'status' | 'message' | 'tool' | 'warning';
   text: string;
+  eventType?: string;
+  phase?: 'turn' | 'item' | 'message' | 'reasoning' | 'command' | 'plan' | 'diff' | 'unknown';
+  item?: {
+    id?: string;
+    kind?: string;
+  };
+  command?: string;
+  delta?: string;
+  plan?: Array<Record<string, unknown>>;
+  files?: Array<Record<string, unknown>>;
 }
 
 export interface ProviderHooks {
@@ -78,6 +88,14 @@ function readString(value: unknown): string | undefined {
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function readArray(value: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const records = value
+    .map((entry) => readRecord(entry))
+    .filter((entry): entry is Record<string, unknown> => entry !== undefined);
+  return records.length > 0 ? records : undefined;
 }
 
 function readNonEmptyString(value: unknown): string | undefined {
@@ -419,7 +437,7 @@ export class CodexAppServerSession implements ProviderSession {
       return;
     }
 
-    const progress = summarizeCodexEvent({ type: method, ...(params ?? {}) });
+    const progress = normalizeAppServerEvent({ type: method, ...(params ?? {}) });
     if (progress) {
       emitProgress(this.activeTurn.hooks, progress);
     }
@@ -523,6 +541,136 @@ function summarizeCodexItemKind(item: Record<string, unknown> | undefined): stri
     readNonEmptyString(item['item_type']) ??
     readNonEmptyString(item['role'])
   );
+}
+
+function extractProgressItem(item: Record<string, unknown> | undefined): ProviderProgressEvent['item'] | undefined {
+  if (!item) return undefined;
+
+  const id = readNonEmptyString(item['id']);
+  const kind = summarizeCodexItemKind(item);
+  if (!id && !kind) return undefined;
+
+  return { ...(id ? { id } : {}), ...(kind ? { kind } : {}) };
+}
+
+function extractDeltaText(event: Record<string, unknown>): string | undefined {
+  const deltaText = readString(readRecord(event['delta'])?.['text']);
+  if (deltaText !== undefined && deltaText.length > 0) {
+    return deltaText;
+  }
+
+  return (
+    readNonEmptyString(readRecord(event['delta'])?.['text']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(event['message']) ??
+    readNonEmptyString(readRecord(event['content'])?.['text'])
+  );
+}
+
+function extractCommandText(event: Record<string, unknown>): string | undefined {
+  const item = readRecord(event['item']);
+  return (
+    readNonEmptyString(item?.['command']) ??
+    readNonEmptyString(event['command']) ??
+    readNonEmptyString(event['tool_name']) ??
+    readNonEmptyString(event['tool'])
+  );
+}
+
+function normalizeAppServerEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {
+  const eventType = readString(event['type']);
+  if (!eventType || eventType === 'turn/completed') return undefined;
+
+  const item = extractProgressItem(readRecord(event['item']));
+
+  switch (eventType) {
+    case 'turn/started':
+      return {
+        kind: 'status',
+        text: 'Agent turn started',
+        phase: 'turn',
+        eventType,
+      };
+    case 'item/started':
+      return {
+        kind: 'status',
+        text: item?.kind ? `${item.kind} started` : 'Work item started',
+        phase: 'item',
+        eventType,
+        ...(item ? { item } : {}),
+      };
+    case 'item/completed':
+      return {
+        kind: 'status',
+        text: item?.kind ? `${item.kind} completed` : 'Work item completed',
+        phase: 'item',
+        eventType,
+        ...(item ? { item } : {}),
+      };
+    case 'item/agentMessage/delta': {
+      const delta = extractDeltaText(event) ?? 'Agent message delta received';
+      return {
+        kind: 'message',
+        text: delta,
+        phase: 'message',
+        eventType,
+        ...(item ? { item } : {}),
+        delta,
+      };
+    }
+    case 'item/reasoning/summaryTextDelta': {
+      const delta = extractDeltaText(event) ?? 'Reasoning summary updated';
+      return {
+        kind: 'message',
+        text: delta,
+        phase: 'reasoning',
+        eventType,
+        ...(item ? { item } : {}),
+        delta,
+      };
+    }
+    case 'item/commandExecution/outputDelta': {
+      const command = extractCommandText(event);
+      const delta = extractDeltaText(event);
+      return {
+        kind: 'tool',
+        text: command ?? 'Command output',
+        phase: 'command',
+        eventType,
+        ...(item ? { item } : {}),
+        ...(command ? { command } : {}),
+        ...(delta ? { delta } : {}),
+      };
+    }
+    case 'turn/plan/updated': {
+      const plan = readArray(event['plan']);
+      return {
+        kind: 'status',
+        text: 'Plan updated',
+        phase: 'plan',
+        eventType,
+        ...(plan ? { plan } : {}),
+      };
+    }
+    case 'turn/diff/updated': {
+      const diff = readRecord(event['diff']);
+      const files = readArray(diff?.['files']) ?? readArray(event['files']);
+      return {
+        kind: 'status',
+        text: 'Diff updated',
+        phase: 'diff',
+        eventType,
+        ...(files ? { files } : {}),
+      };
+    }
+    default:
+      return {
+        kind: 'status',
+        text: `Observed ${eventType}`,
+        phase: 'unknown',
+        eventType,
+      };
+  }
 }
 
 function summarizeCodexEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {

@@ -493,7 +493,7 @@
     - loop exits with error without writing pipeline changes
     - fix guidance is present where recovery action is known
 
-- [ ] Slice 13o: Review Slice — Validate that app-server integration improves operator observability without regressing slice execution behavior.
+- [x] Slice 13o: Review Slice — Validate that app-server integration improves operator observability without regressing slice execution behavior.
   - Compare the original `codex exec` operator feedback against the new app-server path.
   - Verify that execution and review slices still preserve:
     - artifact boundary checks
@@ -558,6 +558,33 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13o — 2026-05-06
+
+**Review completed.** App-server integration does improve operator observability relative to the original `codex exec --json` path because it now exposes structured progress for turn lifecycle, work-item lifecycle, command output, plan updates, and diff updates through `CodexAppServerSession` and `createProgressRenderer`, instead of relying on the thinner one-shot event stream from `codex exec`. Evidence inspected:
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/progress-renderer.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/execution-loop.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/review-loop.test.ts`
+
+**Preserved behavior verified.**
+- Artifact boundary checks still run before provider submission in both loops via `runSlicePreflight`; failures still halt with exit code 2 and no write path entered.
+- Provider output still appears before the confirmation prompt in both loops.
+- Explicit operator confirmation still gates slice recording.
+- Provider failures still return exit code 2 and leave the pipeline unchanged.
+- Current validation is green: `npm test` and `npm run typecheck` both passed from `projects/raes-execute/`.
+
+**Concrete gaps from this review.**
+- Runtime output still does not tell the operator which OpenAI transport is active. `execution-loop.ts` and `review-loop.ts` print the same generic `Provider: started; waiting for progress...` line for both `codex exec` and app-server, so the improved observability is real but not self-identifying at the loop entry point. This is an immediate follow-up for Slice 13h-1.
+- The project config still defaults OpenAI to `exec` when `provider.openai.transport` is omitted, so app-server observability is opt-in rather than the default operator path. This is not a regression, but it means the richer feedback is only available when the config explicitly selects `app_server`.
+- Review evidence is test-backed rather than live end-to-end against a real Codex session. That is acceptable for this slice, but the remaining risk is around real CLI noise level and operator readability under long-running turns.
+
+**No execution-guidance update added.** The findings are immediate operational context for the next transport/UX slices, not a five-slices-later durable workflow rule.
+
+**Next recommended slice:** `Slice 13g-1` remains the right next implementation slice because missing-binary handling is still an unaddressed hard failure path. After that, `Slice 13h-1` should make the active transport and failure class visible in loop preflight output.
 
 ### Slice 13n — 2026-05-06
 

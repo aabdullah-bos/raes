@@ -396,7 +396,7 @@
     - invalid transport value returns config error with fix string
     - existing configs without the new field remain valid
 
-- [ ] Slice 13i: Introduce a session-capable provider abstraction without breaking Claude or existing Codex exec mode.
+- [x] Slice 13i: Introduce a session-capable provider abstraction without breaking Claude or existing Codex exec mode.
   - Refactor the provider layer so OpenAI can support a long-lived app-server session while Claude and current Codex exec mode continue to work.
   - Define the minimal new abstractions needed for:
     - session startup
@@ -558,6 +558,36 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13i — 2026-05-06
+
+**Execution completed.** Introduced an explicit provider session layer in `src/provider.ts` with `startSession()`, `ProviderSession.submitTurn()`, and `ProviderSession.close()`. Claude and current Codex exec mode still run as one-shot subprocesses underneath that abstraction.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/config.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/cli.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/cli.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/execution-loop.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/review-loop.test.ts`
+
+**Tests added/updated:** Added provider-session coverage in `tests/provider.test.ts` and updated loop/CLI provider doubles so session lifecycle is exercised without transport-specific behavior.
+
+**Validation run:**
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** The loop call sites now open and close a provider session per slice, but the OpenAI path is still backed by `codex exec --json`. Slice 13j can implement app-server stdio and JSON-RPC inside the new session boundary without changing the loop contract again.
 
 ### Slice 13h — 2026-05-06
 

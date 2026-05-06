@@ -16,7 +16,13 @@ export interface ProviderHooks {
   onProgress?: (event: ProviderProgressEvent) => void;
 }
 
+export interface ProviderSession {
+  submitTurn(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult>;
+  close(): Promise<void>;
+}
+
 export interface Provider {
+  startSession(): Promise<ProviderSession>;
   submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult>;
 }
 
@@ -88,6 +94,37 @@ function extractCodexCompletedText(event: Record<string, unknown>): string {
 
 function emitProgress(hooks: ProviderHooks | undefined, event: ProviderProgressEvent): void {
   hooks?.onProgress?.(event);
+}
+
+class OneShotProviderSession implements ProviderSession {
+  private closed = false;
+  private runTurn: (prompt: string, hooks?: ProviderHooks) => Promise<ProviderResult>;
+
+  constructor(runTurn: (prompt: string, hooks?: ProviderHooks) => Promise<ProviderResult>) {
+    this.runTurn = runTurn;
+  }
+
+  async submitTurn(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
+    if (this.closed) {
+      return {
+        output: '',
+        error: 'provider session is already closed',
+      };
+    }
+    return this.runTurn(prompt, hooks);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+abstract class OneShotProvider implements Provider {
+  async startSession(): Promise<ProviderSession> {
+    return new OneShotProviderSession((prompt, hooks) => this.submit(prompt, hooks));
+  }
+
+  abstract submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult>;
 }
 
 function parseJsonlChunk(
@@ -310,11 +347,12 @@ function extractClaudeResultFromLine(
   return undefined;
 }
 
-export class ClaudeCodeProvider implements Provider {
+export class ClaudeCodeProvider extends OneShotProvider {
   private config: RaesConfig;
   private spawnFn: SpawnFn;
 
   constructor(config: RaesConfig, spawnFn?: SpawnFn) {
+    super();
     this.config = config;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   }
@@ -389,11 +427,12 @@ export class ClaudeCodeProvider implements Provider {
   }
 }
 
-export class CodexProvider implements Provider {
+export class CodexProvider extends OneShotProvider {
   private config: RaesConfig;
   private spawnFn: SpawnFn;
 
   constructor(config: RaesConfig, spawnFn?: SpawnFn) {
+    super();
     this.config = config;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   }

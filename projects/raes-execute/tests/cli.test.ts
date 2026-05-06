@@ -49,6 +49,10 @@ async function makeTempProject(withConfig: boolean): Promise<string> {
 
 function testProvider(output = 'agent output'): Provider {
   return {
+    startSession: async () => ({
+      submitTurn: async () => ({ output }),
+      close: async () => {},
+    }),
     submit: async () => ({ output }),
   };
 }
@@ -56,6 +60,13 @@ function testProvider(output = 'agent output'): Provider {
 function testProviderSpy(output = 'agent output') {
   let calls = 0;
   const provider: Provider = {
+    startSession: async () => ({
+      submitTurn: async () => {
+        calls += 1;
+        return { output };
+      },
+      close: async () => {},
+    }),
     submit: async () => {
       calls += 1;
       return { output };

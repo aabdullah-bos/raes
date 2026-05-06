@@ -5,7 +5,7 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
-import { createProvider, type Provider, type ProviderProgressEvent } from './provider.ts';
+import { createProvider, type Provider, type ProviderProgressEvent, type ProviderResult } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
 interface LoopIO {
@@ -85,9 +85,15 @@ export async function runExecutionLoop(
   out(`Provider:    started; waiting for progress...`);
   out('');
 
-  const result = await provider.submit(prompt, {
-    onProgress: (event) => renderProgress(event, { out, err }),
-  });
+  const session = await provider.startSession();
+  let result: ProviderResult;
+  try {
+    result = await session.submitTurn(prompt, {
+      onProgress: (event) => renderProgress(event, { out, err }),
+    });
+  } finally {
+    await session.close();
+  }
   if (result.error) {
     err(`error: ${result.error}`);
     if (result.fix) {

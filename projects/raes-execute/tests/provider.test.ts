@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ClaudeCodeProvider, CodexProvider, createProvider } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
-import type { ProviderProgressEvent, SpawnFn } from '../src/provider.ts';
+import type { ProviderProgressEvent, ProviderSession, SpawnFn } from '../src/provider.ts';
 
 function makeConfig(providerName: 'anthropic' | 'openai', writeAccess?: boolean): RaesConfig {
   return {
@@ -166,6 +166,15 @@ test('ClaudeCodeProvider: emits progress events while parsing stream-json output
   ]);
 });
 
+test('ClaudeCodeProvider: startSession returns a closeable session that preserves one-shot submit behavior', async () => {
+  const mock = makeSpawnMock();
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const session = await provider.startSession();
+  const result = await session.submitTurn('test prompt');
+  assert.equal(result.output, 'agent-output');
+  await session.close();
+});
+
 test('CodexProvider: passes --sandbox workspace-write when write_access is true', async () => {
   const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'agent-output' })}\n` });
   const provider = new CodexProvider(makeConfig('openai', true), mock.spawnFn);
@@ -250,6 +259,43 @@ test('CodexProvider: emits progress events before turn.completed', async () => {
     { kind: 'status', text: 'reasoning completed' },
     { kind: 'tool', text: 'Edit' },
   ]);
+});
+
+test('CodexProvider: startSession returns a closeable session that forwards progress callbacks', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'thread.started' }),
+    JSON.stringify({ type: 'turn.completed', output_text: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new CodexProvider(makeConfig('openai'), mock.spawnFn);
+  const session = await provider.startSession();
+  const result = await session.submitTurn('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [{ kind: 'status', text: 'Session started' }]);
+  await session.close();
+});
+
+test('createProvider: startSession returns a ProviderSession for anthropic config', async () => {
+  const provider = createProvider(makeConfig('anthropic'));
+  const session = await provider.startSession();
+  assert.equal(typeof session.submitTurn, 'function');
+  assert.equal(typeof session.close, 'function');
+  await session.close();
+});
+
+test('ProviderSession shape remains transport-agnostic', () => {
+  const fakeSession: ProviderSession = {
+    submitTurn: async (_prompt, hooks) => {
+      hooks?.onProgress?.({ kind: 'status', text: 'progress' });
+      return { output: 'done' };
+    },
+    close: async () => {},
+  };
+  assert.equal(typeof fakeSession.submitTurn, 'function');
+  assert.equal(typeof fakeSession.close, 'function');
 });
 
 test('createProvider: returns ClaudeCodeProvider for anthropic config', () => {

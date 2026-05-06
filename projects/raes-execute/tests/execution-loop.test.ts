@@ -101,6 +101,14 @@ async function makeProject(pipelineContent = VALID_ARTIFACTS['docs/pipeline.md']
 
 function providerReturning(result: { output: string; error?: string; fix?: string }): Provider {
   return {
+    startSession: async () => ({
+      submitTurn: async (_prompt: string, hooks?: ProviderHooks) => {
+        hooks?.onProgress?.({ kind: 'status', text: 'Reading artifacts' });
+        hooks?.onProgress?.({ kind: 'tool', text: 'Read' });
+        return result;
+      },
+      close: async () => {},
+    }),
     submit: async (_prompt: string, hooks?: ProviderHooks) => {
       hooks?.onProgress?.({ kind: 'status', text: 'Reading artifacts' });
       hooks?.onProgress?.({ kind: 'tool', text: 'Read' });
@@ -111,6 +119,15 @@ function providerReturning(result: { output: string; error?: string; fix?: strin
 
 function providerWithProgress(progress: ProviderProgressEvent[], result: { output: string; error?: string; fix?: string }): Provider {
   return {
+    startSession: async () => ({
+      submitTurn: async (_prompt: string, hooks?: ProviderHooks) => {
+        for (const event of progress) {
+          hooks?.onProgress?.(event);
+        }
+        return result;
+      },
+      close: async () => {},
+    }),
     submit: async (_prompt: string, hooks?: ProviderHooks) => {
       for (const event of progress) {
         hooks?.onProgress?.(event);

@@ -233,6 +233,17 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
   - Decide whether to emit a deprecation notice for legacy config paths; if so, keep it informational and non-blocking.
   - Tests: `--config ./docs/raes.config.yaml` works for a legacy project fixture; root-config behavior remains unchanged.
 
+- [x] Slice 13r-file-rights: Review Slice — Define the canonical artifact boundary rules
+  - Read the current `docs/raes-reference.md` in full. Locate the existing section that describes artifact file roles (Section 3 or equivalent). Note the exact heading and location where the File Boundaries section will be inserted.
+  - Read `docs/artifact-boundaries.md` in full. This is the authoritative input for this slice — do not modify its content during this review; treat it as the draft to be promoted.
+  - Compare the permitted and forbidden heading lists in `docs/artifact-boundaries.md` against the current `docs/raes-reference.md` artifact descriptions. Flag any conflict or gap between the two before writing anything.
+  - If no conflicts are found, insert the File Boundaries section from `docs/artifact-boundaries.md` into `docs/raes-reference.md` at the identified location. Do not rewrite or summarize — insert the content as-is.
+  - If conflicts are found, do not write. Record each conflict as a flag with a description of what must be resolved by human decision before this slice can complete.
+  - After insertion, verify that `raes-reference.md` contains exactly one authoritative definition for each artifact's job, decision right, mutation rule, and permitted/forbidden headings. No duplication with existing sections.
+  - Append handoff notes to `projects/raes-execute/docs/pipeline.md` recording:
+    - What was inserted and at what location in `docs/raes-reference.md`
+    - Any conflicts found and how they were resolved or flagged
+  - No new slices need to be generated in this step
 
 - [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
@@ -287,6 +298,25 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 ---
 
 ## Handoff Notes
+
+### Slice 13r-file-rights — 2026-05-06
+
+**Insertion completed.** `## 3a. Artifact File Boundaries` was inserted into `docs/raes-reference.md` between Section 3 ("Artifact Responsibilities") and Section 4 ("The Two Slice Types"). Content was taken verbatim from `docs/artifact-boundaries.md`; heading levels were shifted down one tier to fit the document hierarchy (`##` → `###`, `###` → `####`).
+
+**What was inserted:**
+- Decision Rights Table (all 7 artifacts)
+- Permitted and Forbidden Headings (per-file, all 7 artifacts: prd.md, system.md, decisions.md, pipeline.md, execution-guidance.md, validation.md, prd-ux-review.md)
+- Promotion and Cross-Reference Rules (4 rules)
+
+**No blocking conflicts found** between `docs/artifact-boundaries.md` and `docs/raes-reference.md`. Two items require human awareness:
+
+1. **FLAG — Ambiguity (open):** `artifact-boundaries.md` lists `## Technical Considerations` as a permitted heading in `prd.md`. `raes-reference.md` Section 3 says PRD should not contain "technical constraints." These are not a direct contradiction (product-level considerations vs implementation choices) but create surface tension. A human should decide whether Section 3's "No: technical constraints" language needs clarification or whether `## Technical Considerations` needs a scope note.
+
+2. **Duplication concern (open):** `raes-reference.md` Section 3 contains a "promotion rule" paragraph covering the decision→constraint path. The newly inserted Section 3a also contains "Promotion and Cross-Reference Rules" which covers the same path (plus three additional rules). Both now exist in the document. The Section 3a version is more complete and should be considered authoritative; the Section 3 paragraph is now redundant. A human should remove or replace the Section 3 "The promotion rule" subsection in a future editorial pass.
+
+3. **Out-of-scope observation:** The current `projects/raes-execute/docs/execution-guidance.md` has a `## Invariants` top-level section. Section 3a now states `## Invariants` is a **forbidden** heading in `execution-guidance.md` (belongs in `system.md`). This is a boundary violation in the existing file that was not introduced by this slice. A future slice should rename that section or promote its content to `system.md`.
+
+**Next operator:** Slice 13g is the next unchecked execution slice. It adds missing-binary handling for provider subprocesses (`claude`/`codex` not on PATH). The resolved project root from `checkConfig()` is already in place from Slices 13f-config and 13f-compat.
 
 ### Slice 13f-config — 2026-05-05
 

@@ -36,6 +36,18 @@ export type SpawnFn = (
   on(event: 'close', cb: (code: number | null) => void): unknown;
 };
 
+interface SpawnedProcess {
+  stdin: { write(d: string): unknown; end(): void } | null;
+  stdout: { on(event: 'data', cb: (chunk: Buffer) => void): unknown } | null;
+  stderr: { on(event: 'data', cb: (chunk: Buffer) => void): unknown } | null;
+  on(event: 'close', cb: (code: number | null) => void): unknown;
+}
+
+interface PendingRequest {
+  resolve: (value: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+}
+
 const AUTH_ERROR_RE = /not logged in|unauthorized|unauthenticated|authentication|login required|auth failed|authentication failed/i;
 
 function extractClaudeResult(stdout: string): ProviderResult {
@@ -96,6 +108,37 @@ function emitProgress(hooks: ProviderHooks | undefined, event: ProviderProgressE
   hooks?.onProgress?.(event);
 }
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function makeAppServerPayloadError(line: string): ProviderResult {
+  return {
+    output: '',
+    error: `failed to parse codex app-server output as JSONL: ${line.slice(0, 200)}`,
+  };
+}
+
+function readJsonRpcId(value: unknown): string | number | undefined {
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+}
+
+function readJsonRpcError(value: unknown): { code?: number; message: string } | undefined {
+  const record = readRecord(value);
+  const message = readString(record?.['message']);
+  if (!message) return undefined;
+  const code = typeof record?.['code'] === 'number' ? record['code'] as number : undefined;
+  return { code, message };
+}
+
+function extractTurnRecord(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  return readRecord(params?.['turn']);
+}
+
+function extractThreadRecord(params: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  return readRecord(params?.['thread']);
+}
+
 class OneShotProviderSession implements ProviderSession {
   private closed = false;
   private runTurn: (prompt: string, hooks?: ProviderHooks) => Promise<ProviderResult>;
@@ -125,6 +168,308 @@ abstract class OneShotProvider implements Provider {
   }
 
   abstract submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult>;
+}
+
+export class CodexAppServerSession implements ProviderSession {
+  private config: RaesConfig;
+  private cwd: string;
+  private spawnFn: SpawnFn;
+  private child: SpawnedProcess | null = null;
+  private nextRequestId = 1;
+  private stdoutBuffer = '';
+  private stderr = '';
+  private pendingRequests = new Map<string | number, PendingRequest>();
+  private threadId: string | undefined;
+  private started = false;
+  private startPromise: Promise<void> | null = null;
+  private closed = false;
+  private closePromise: Promise<void> | null = null;
+  private activeTurn:
+    | {
+        hooks?: ProviderHooks;
+        resolve: (value: ProviderResult) => void;
+        reject: (error: Error) => void;
+        done: boolean;
+      }
+    | undefined;
+
+  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
+    this.config = config;
+    this.cwd = cwd;
+    this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+  }
+
+  async start(): Promise<void> {
+    if (this.closed) {
+      throw new Error('provider session is already closed');
+    }
+    if (this.started) return;
+    if (this.startPromise) return this.startPromise;
+
+    this.startPromise = this.startInternal();
+    try {
+      await this.startPromise;
+      this.started = true;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  async submitTurn(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
+    if (this.closed) {
+      return {
+        output: '',
+        error: 'provider session is already closed',
+      };
+    }
+
+    await this.start();
+
+    if (!this.threadId) {
+      return {
+        output: '',
+        error: 'codex app-server session did not return a thread id',
+      };
+    }
+
+    return new Promise<ProviderResult>((resolve, reject) => {
+      this.activeTurn = {
+        hooks,
+        resolve,
+        reject,
+        done: false,
+      };
+
+      const params: Record<string, unknown> = {
+        threadId: this.threadId,
+        input: [{ type: 'text', text: prompt }],
+        cwd: this.cwd,
+      };
+      if (this.config.provider.model) {
+        params['model'] = this.config.provider.model;
+      }
+      if (this.config.provider.sandbox?.write_access !== false) {
+        params['sandboxPolicy'] = 'workspace-write';
+      }
+
+      this.sendRequest('turn/start', params).catch((error) => {
+        this.finishActiveTurnWithRejection(error);
+      });
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    this.closed = true;
+
+    if (!this.child) {
+      this.closePromise = Promise.resolve();
+      return this.closePromise;
+    }
+
+    this.closePromise = (async () => {
+      if (this.threadId) {
+        await this.sendRequest('thread/unsubscribe', { threadId: this.threadId });
+      }
+      this.child?.stdin?.end();
+      await new Promise<void>((resolve, reject) => {
+        const currentChild = this.child;
+        if (!currentChild) {
+          resolve();
+          return;
+        }
+
+        const existing = currentChild;
+        existing.on('close', (code) => {
+          this.child = null;
+          if (code === 0 || code === null) {
+            resolve();
+            return;
+          }
+          reject(new Error(
+            `codex app-server exited before clean shutdown (code ${code})${this.stderr ? `: ${this.stderr.trim()}` : ''}`,
+          ));
+        });
+      });
+    })();
+
+    return this.closePromise;
+  }
+
+  private async startInternal(): Promise<void> {
+    const child = this.spawnFn('codex', ['app-server', '--listen', 'stdio://']) as SpawnedProcess;
+    this.child = child;
+
+    if (!child.stdin || !child.stdout || !child.stderr) {
+      throw new Error('Failed to spawn codex app-server subprocess: stdio streams unavailable');
+    }
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      const parsed = parseJsonlChunk(chunk.toString(), this.stdoutBuffer, (line) =>
+        this.handleJsonRpcLine(line),
+      );
+      this.stdoutBuffer = parsed.buffer;
+      if (parsed.result) {
+        this.resolveMalformedPayload(parsed.result);
+      }
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      this.stderr += chunk.toString();
+    });
+    child.on('close', (code: number | null) => {
+      this.handleProcessClose(code);
+    });
+
+    await this.sendRequest('initialize', {
+      clientInfo: {
+        name: 'raes-execute',
+        title: 'RAES Execute',
+        version: '0.1.0',
+      },
+    });
+    this.sendNotification('initialized', {});
+    const threadResult = await this.sendRequest('thread/start', {
+      cwd: this.cwd,
+      ephemeral: true,
+    });
+    const resultThread = extractThreadRecord(threadResult);
+    this.threadId = readNonEmptyString(resultThread?.['id']) ?? this.threadId;
+    if (!this.threadId) {
+      throw new Error('codex app-server thread/start did not return a thread id');
+    }
+  }
+
+  private sendNotification(method: string, params: Record<string, unknown>): void {
+    this.writeMessage({ method, params });
+  }
+
+  private sendRequest(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.child?.stdin) {
+      return Promise.reject(new Error('codex app-server subprocess is not available'));
+    }
+
+    const id = this.nextRequestId++;
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      this.pendingRequests.set(id, { resolve, reject });
+      this.writeMessage({ id, method, params });
+    });
+  }
+
+  private writeMessage(message: Record<string, unknown>): void {
+    this.child?.stdin?.write(`${JSON.stringify(message)}\n`);
+  }
+
+  private handleJsonRpcLine(line: string): ProviderResult | void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return makeAppServerPayloadError(line);
+    }
+
+    const message = readRecord(parsed);
+    if (!message) {
+      return makeAppServerPayloadError(line);
+    }
+
+    const id = readJsonRpcId(message['id']);
+    const method = readString(message['method']);
+    if (id !== undefined) {
+      const pending = this.pendingRequests.get(id);
+      if (!pending) return undefined;
+      this.pendingRequests.delete(id);
+
+      const error = readJsonRpcError(message['error']);
+      if (error) {
+        pending.reject(new Error(`codex app-server ${method ?? 'request'} failed: ${error.message}`));
+        return undefined;
+      }
+
+      const result = readRecord(message['result']) ?? {};
+      pending.resolve(result);
+      return undefined;
+    }
+
+    if (!method) return undefined;
+    const params = readRecord(message['params']);
+    this.handleNotification(method, params);
+    return undefined;
+  }
+
+  private handleNotification(method: string, params: Record<string, unknown> | undefined): void {
+    if (method === 'thread/started' && !this.threadId) {
+      this.threadId = readNonEmptyString(extractThreadRecord(params)?.['id']) ?? this.threadId;
+    }
+
+    if (!this.activeTurn || this.activeTurn.done) {
+      return;
+    }
+
+    if (method === 'turn/completed') {
+      const turn = extractTurnRecord(params);
+      const status = readNonEmptyString(turn?.['status']) ?? 'completed';
+      if (status === 'failed') {
+        const message =
+          readNonEmptyString(readRecord(turn?.['error'])?.['message']) ??
+          'codex app-server turn failed';
+        this.finishActiveTurn({ output: '', error: message });
+        return;
+      }
+      this.finishActiveTurn({ output: extractCodexCompletedText(turn ?? {}) });
+      return;
+    }
+
+    const progress = summarizeCodexEvent({ type: method, ...(params ?? {}) });
+    if (progress) {
+      emitProgress(this.activeTurn.hooks, progress);
+    }
+  }
+
+  private resolveMalformedPayload(result: ProviderResult): void {
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(new Error(result.error ?? 'codex app-server emitted malformed output'));
+    }
+    this.pendingRequests.clear();
+
+    if (this.activeTurn && !this.activeTurn.done) {
+      this.finishActiveTurn(result);
+    }
+  }
+
+  private finishActiveTurn(result: ProviderResult): void {
+    if (!this.activeTurn || this.activeTurn.done) return;
+    this.activeTurn.done = true;
+    this.activeTurn.resolve(result);
+    this.activeTurn = undefined;
+  }
+
+  private finishActiveTurnWithRejection(error: unknown): void {
+    if (!this.activeTurn || this.activeTurn.done) return;
+    this.activeTurn.done = true;
+    this.activeTurn.reject(new Error(toErrorMessage(error)));
+    this.activeTurn = undefined;
+  }
+
+  private handleProcessClose(code: number | null): void {
+    if (this.child === null) return;
+    this.child = null;
+
+    const error = new Error(
+      `codex app-server exited before clean shutdown (code ${code ?? 'null'})${this.stderr ? `: ${this.stderr.trim()}` : ''}`,
+    );
+
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(error);
+    }
+    this.pendingRequests.clear();
+
+    if (this.activeTurn && !this.activeTurn.done) {
+      this.finishActiveTurn({
+        output: '',
+        error: error.message,
+      });
+    }
+  }
 }
 
 function parseJsonlChunk(

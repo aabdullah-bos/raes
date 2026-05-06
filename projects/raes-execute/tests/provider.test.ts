@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaudeCodeProvider, CodexProvider, createProvider } from '../src/provider.ts';
+import { ClaudeCodeProvider, CodexAppServerSession, CodexProvider, createProvider } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 import type { ProviderProgressEvent, ProviderSession, SpawnFn } from '../src/provider.ts';
 
@@ -77,6 +77,92 @@ function makeSpawnMock(opts: { stdoutData?: string; stderrData?: string; exitCod
 
   return {
     spawnFn,
+    get capturedCmd() { return capturedCmd; },
+    get capturedArgs() { return capturedArgs; },
+    get stdinWritten() { return stdinWritten; },
+  };
+}
+
+function makeAppServerSpawnMock() {
+  let capturedCmd = '';
+  let capturedArgs: string[] = [];
+  let stdoutListener: ((c: Buffer) => void) | undefined;
+  let stderrListener: ((c: Buffer) => void) | undefined;
+  let closeListener: ((code: number | null) => void) | undefined;
+  const stdinWritten: string[] = [];
+
+  const spawnFn: SpawnFn = (cmd, args) => {
+    capturedCmd = cmd;
+    capturedArgs = [...args];
+
+    return {
+      stdin: {
+        write: (data: string) => {
+          stdinWritten.push(data);
+          return true;
+        },
+        end: () => {},
+      },
+      stdout: {
+        on: (_event: 'data', cb: (c: Buffer) => void) => {
+          stdoutListener = cb;
+          return {} as unknown;
+        },
+      },
+      stderr: {
+        on: (_event: 'data', cb: (c: Buffer) => void) => {
+          stderrListener = cb;
+          return {} as unknown;
+        },
+      },
+      on: (_event: 'close', cb: (code: number | null) => void) => {
+        closeListener = cb;
+        return {} as unknown;
+      },
+    };
+  };
+
+  function emitStdout(message: Record<string, unknown>): void {
+    stdoutListener?.(Buffer.from(`${JSON.stringify(message)}\n`));
+  }
+
+  function emitStdoutRaw(raw: string): void {
+    stdoutListener?.(Buffer.from(raw));
+  }
+
+  function emitStderr(text: string): void {
+    stderrListener?.(Buffer.from(text));
+  }
+
+  function close(code: number | null): void {
+    closeListener?.(code);
+  }
+
+  function nextRequestId(): number {
+    const raw = stdinWritten[stdinWritten.length - 1];
+    const parsed = JSON.parse(raw.trim()) as { id: number };
+    return parsed.id;
+  }
+
+  function reply(result: Record<string, unknown>): void {
+    emitStdout({ id: nextRequestId(), result });
+  }
+
+  function replyError(message: string): void {
+    emitStdout({
+      id: nextRequestId(),
+      error: { code: -32603, message },
+    });
+  }
+
+  return {
+    spawnFn,
+    emitStdout,
+    emitStdoutRaw,
+    emitStderr,
+    close,
+    reply,
+    replyError,
     get capturedCmd() { return capturedCmd; },
     get capturedArgs() { return capturedArgs; },
     get stdinWritten() { return stdinWritten; },
@@ -276,6 +362,180 @@ test('CodexProvider: startSession returns a closeable session that forwards prog
   assert.equal(result.output, 'done');
   assert.deepEqual(events, [{ kind: 'status', text: 'Session started' }]);
   await session.close();
+});
+
+test('CodexAppServerSession: starts codex app-server over stdio and sends initialize handshake', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), process.cwd(), mock.spawnFn);
+
+  const startup = session.start();
+  assert.equal(mock.capturedCmd, 'codex');
+  assert.deepEqual(mock.capturedArgs, ['app-server', '--listen', 'stdio://']);
+
+  const initialize = JSON.parse(mock.stdinWritten[0].trim()) as Record<string, unknown>;
+  assert.equal(initialize.method, 'initialize');
+  assert.deepEqual((initialize.params as Record<string, unknown>).clientInfo, {
+    name: 'raes-execute',
+    title: 'RAES Execute',
+    version: '0.1.0',
+  });
+
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  const initialized = JSON.parse(mock.stdinWritten[1].trim()) as Record<string, unknown>;
+  assert.equal(initialized.method, 'initialized');
+  mock.emitStdout({
+    method: 'thread/started',
+    params: { thread: { id: 'thread-1' } },
+  });
+  mock.reply({ thread: { id: 'thread-1' } });
+
+  await startup;
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: correlates requests, streams notifications, and returns turn output', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  const initialized = JSON.parse(mock.stdinWritten[1].trim()) as Record<string, unknown>;
+  assert.equal(initialized.method, 'initialized');
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice', {
+    onProgress: (event) => events.push(event),
+  });
+  await Promise.resolve();
+  const turnStart = JSON.parse(mock.stdinWritten[3].trim()) as Record<string, unknown>;
+  assert.equal(turnStart.method, 'turn/start');
+  const params = turnStart.params as Record<string, unknown>;
+  assert.equal(params.threadId, 'thread-1');
+  assert.equal((params.input as Array<Record<string, unknown>>)[0].text, 'Implement the slice');
+  assert.equal(params.cwd, '/repo');
+  assert.equal(params.sandboxPolicy, 'workspace-write');
+
+  mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
+  mock.emitStdout({ method: 'item/started', params: { item: { type: 'reasoning' } } });
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({
+    method: 'turn/completed',
+    params: { turn: { id: 'turn-1', status: 'completed', output_text: 'done' } },
+  });
+
+  const result = await turnPromise;
+  assert.deepEqual(events, [
+    { kind: 'status', text: 'Agent turn started' },
+    { kind: 'status', text: 'reasoning started' },
+  ]);
+  assert.equal(result.output, 'done');
+
+  const closePromise = session.close();
+  const unsubscribe = JSON.parse(mock.stdinWritten[4].trim()) as Record<string, unknown>;
+  assert.equal(unsubscribe.method, 'thread/unsubscribe');
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: malformed JSONL payload returns a structured error', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.emitStdoutRaw('not-json\n');
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /failed to parse codex app-server output as JSONL/i);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: subprocess termination before clean shutdown surfaces a structured error', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const closePromise = session.close();
+  mock.emitStderr('app-server exited unexpectedly');
+  mock.close(1);
+
+  await assert.rejects(closePromise, /codex app-server exited before clean shutdown/i);
+});
+
+test('CodexAppServerSession: JSON-RPC error response rejects the matching request', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.replyError('turn failed');
+
+  await assert.rejects(turnPromise, /turn failed/);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
 });
 
 test('createProvider: startSession returns a ProviderSession for anthropic config', async () => {

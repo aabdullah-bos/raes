@@ -411,7 +411,7 @@
     - new abstraction supports progress callbacks without transport-specific behavior
     - factory/types remain compatible with Claude provider
 
-- [ ] Slice 13j: Implement Codex app-server stdio transport and JSON-RPC client.
+- [x] Slice 13j: Implement Codex app-server stdio transport and JSON-RPC client.
   - Spawn `codex app-server --listen stdio://` as a subprocess.
   - Implement JSON-RPC client behavior for:
     - request id generation
@@ -558,6 +558,32 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13j — 2026-05-06
+
+**Execution completed.** Added an isolated `CodexAppServerSession` in `src/provider.ts` that spawns `codex app-server --listen stdio://`, performs the JSON-RPC startup handshake (`initialize` → `initialized` → `thread/start`), submits turns with `turn/start`, routes notifications while a turn is active, captures stderr, correlates request/response ids, and performs explicit `thread/unsubscribe` shutdown.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/config.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+
+**Tests added/updated:** `tests/provider.test.ts` now covers mocked app-server startup handshake, request/response correlation, notification receipt during a turn, malformed JSONL handling, subprocess termination before clean shutdown, and JSON-RPC error responses.
+
+**Validation run:**
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** The new app-server transport is intentionally isolated and is not selected by `createProvider()` yet. `CodexAppServerSession` currently reuses the existing coarse `summarizeCodexEvent()` path by mapping JSON-RPC notification `method` names into the existing event summarizer; Slice 13k should replace that shim with explicit app-server notification normalization rather than extending the temporary mapping.
 
 ### Slice 13i — 2026-05-06
 

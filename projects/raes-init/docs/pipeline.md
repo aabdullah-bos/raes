@@ -240,6 +240,19 @@ A slice is complete only when:
   - Identify where it would valuable for operator to receive feedback, for example "Generating pipeline file..." and message indicating that the pipeline file has been completed
   - Create progress messages for the areas identified as valuable for the operator and ensure that those messages are displayed to stdout
 
+### Milestone 10 — Config Layout Alignment
+
+- [ ] Execution Slice: Move generated `raes.config.yaml` to the project root and align init docs
+  - Update `projects/raes-init/src/generate-docs.ts` so `raes.config.yaml` is written to `<target>/raes.config.yaml` while all living artifacts remain under `<target>/docs/`
+  - Update tests, README examples, and any generated output descriptions to match the canonical layout
+  - Preserve the create-or-fail write contract across both the root config file and the docs directory outputs
+  - Do not widen config contents or introduce discovery behavior; only align file location and related documentation
+
+- [ ] Review Slice: Assess legacy compatibility expectations for `docs/raes.config.yaml`
+  - Inspect `raes-reference.md`, `raes-execute`, and current project examples
+  - Decide whether `raes-init` needs to emit any migration notice or compatibility note for pre-existing repos that still use `docs/raes.config.yaml`
+  - Record the decision without implementation code
+
 ---
 
 ## Handoff Notes

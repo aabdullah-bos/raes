@@ -226,6 +226,13 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
   - Standardize the canonical config location to the RAES project root; update error messages and help text accordingly.
   - Tests: current-directory config success; explicit `--config` success; missing local config with actionable error; ambiguous/discovery behavior must not exist.
 
+- [x] Slice 13f-compat: Support explicit legacy `docs/raes.config.yaml` targeting without changing canonical layout.
+  - Keep the canonical default config location at the RAES project root.
+  - When `--config` points to a legacy `docs/raes.config.yaml`, resolve artifact paths relative to the RAES project root rather than `docs/`.
+  - Do not add implicit upward search or repo-wide discovery.
+  - Decide whether to emit a deprecation notice for legacy config paths; if so, keep it informational and non-blocking.
+  - Tests: `--config ./docs/raes.config.yaml` works for a legacy project fixture; root-config behavior remains unchanged.
+
 
 - [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
@@ -294,6 +301,18 @@ RAES Execute is a CLI tool that automates disciplined, ambiguity-resistant AI-as
 **Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 206 passing.
 
 **Next operator:** Slice 13g is next. It can build on the explicit project-root plumbing already in place and should keep using the resolved target project root rather than the invocation cwd when surfacing provider runtime failures.
+
+### Slice 13f-compat — 2026-05-05
+
+**Legacy explicit config targeting now resolves from the project root.** `src/config.ts` now treats an explicit `--config .../docs/raes.config.yaml` as a legacy layout and resolves the configured artifact paths relative to the parent project root instead of `docs/`. Canonical default behavior is unchanged: `raes-execute` still reads `./raes.config.yaml` from the current working directory unless `--config` is passed.
+
+**Coverage added only for the compatibility path.** `tests/config.test.ts` now asserts that `checkConfig()` returns the parent project directory as `projectRoot` for an explicit legacy docs config. `tests/cli.test.ts` now covers `--status --config ./docs/raes.config.yaml` from outside the target project to prove pipeline and artifact lookup still work through the CLI path.
+
+**No deprecation notice was added.** This slice keeps legacy explicit targeting silent and non-blocking; there is no operator-facing warning yet.
+
+**Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 208 passing.
+
+**Next operator:** Slice 13g is next. Reuse the resolved target project root from `checkConfig()` when surfacing missing-binary provider failures so runtime errors still point at the correct project in monorepo and legacy-config cases.
 
 ### Slice 13f — 2026-05-05
 

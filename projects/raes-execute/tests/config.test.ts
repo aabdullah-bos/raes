@@ -345,6 +345,29 @@ test('checkConfig: explicit config path outside cwd is supported', async () => {
   }
 });
 
+test('checkConfig: explicit legacy docs/raes.config.yaml resolves artifacts from project root', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-monorepo-test-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'docs', 'raes.config.yaml'), VALID_CONFIG_YAML);
+
+    const { errors, config, projectRoot } = checkConfig(
+      monorepoDir,
+      join(projectDir, 'docs', 'raes.config.yaml'),
+    );
+    assert.equal(errors.length, 0);
+    assert.ok(config, 'expected config with explicit legacy path');
+    assert.equal(projectRoot, projectDir);
+    assert.equal(config.project.name, 'test-project');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
 test('checkConfig: does not discover config from child directories without explicit path', async () => {
   const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-monorepo-test-'));
   const projectDir = join(monorepoDir, 'projects', 'demo');

@@ -70,6 +70,27 @@ function nonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+function resolveConfigProjectRoot(projectRoot: string, configPathOverride?: string): {
+  configPath: string;
+  projectRoot: string;
+} {
+  const configPath = configPathOverride !== undefined
+    ? resolve(projectRoot, configPathOverride)
+    : join(projectRoot, 'raes.config.yaml');
+
+  if (configPathOverride === undefined) {
+    return { configPath, projectRoot };
+  }
+
+  const configDir = dirname(configPath);
+  const legacyConfigName = join('docs', 'raes.config.yaml');
+  const normalizedSuffix = configPath.endsWith(legacyConfigName);
+  return {
+    configPath,
+    projectRoot: normalizedSuffix ? dirname(configDir) : configDir,
+  };
+}
+
 export function extractConfig(
   data: Record<string, unknown>,
 ): { config?: RaesConfig; errors: ConfigError[] } {
@@ -257,12 +278,10 @@ export function checkConfig(
   projectRoot: string,
   configPathOverride?: string,
 ): { errors: ConfigError[]; config?: RaesConfig; projectRoot?: string; configPath?: string } {
-  const configPath = configPathOverride !== undefined
-    ? resolve(projectRoot, configPathOverride)
-    : join(projectRoot, 'raes.config.yaml');
-  const resolvedProjectRoot = configPathOverride !== undefined
-    ? dirname(configPath)
-    : projectRoot;
+  const { configPath, projectRoot: resolvedProjectRoot } = resolveConfigProjectRoot(
+    projectRoot,
+    configPathOverride,
+  );
 
   if (!existsSync(configPath)) {
     return {

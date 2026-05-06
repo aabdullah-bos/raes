@@ -236,6 +236,31 @@ test('--status supports --config <path> from outside the target project', async 
   }
 });
 
+test('--status supports explicit legacy docs/raes.config.yaml from outside the target project', async () => {
+  const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-cli-monorepo-'));
+  const projectDir = join(monorepoDir, 'projects', 'demo');
+  try {
+    await mkdir(join(projectDir, 'docs'), { recursive: true });
+    for (const file of ALL_ARTIFACT_PATHS) {
+      await writeFile(join(projectDir, file), '# stub');
+    }
+    await writeFile(join(projectDir, 'docs', 'raes.config.yaml'), VALID_CONFIG_YAML);
+    await writeFile(join(projectDir, 'docs/pipeline.md'), PIPELINE_WITH_MIXED_SLICES);
+
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--status', '--config', join(projectDir, 'docs', 'raes.config.yaml')],
+      { out: (line) => out.push(line), cwd: monorepoDir },
+    );
+    assert.equal(exitCode, 0);
+    const full = out.join('\n');
+    assert.ok(full.includes('test-project'), 'expected legacy explicit config status output');
+    assert.ok(full.includes('Next unchecked slice to run'), 'expected pipeline to resolve from project root');
+  } finally {
+    rmSync(monorepoDir, { recursive: true });
+  }
+});
+
 test('--status from a parent directory does not discover nested project configs implicitly', async () => {
   const monorepoDir = await mkdtemp(join(tmpdir(), 'raes-cli-monorepo-'));
   const projectDir = join(monorepoDir, 'projects', 'demo');

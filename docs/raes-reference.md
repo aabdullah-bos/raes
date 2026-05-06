@@ -143,7 +143,35 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 **What does NOT belong in config:** the content of those artifacts. When new constraints emerge during execution, they are recorded in the project's existing truth artifacts — `pipeline.md` for slice progression and workflow guidance, `decisions.md` for durable choices that future slices must respect, `system.md` when the project has a stable project-wide rules document. RAES picks those constraints up on the next pass. This keeps config thin and prevents it from becoming a second documentation system.
 
-**Config schema:** defined and implemented in `projects/raes-init/src/generate-docs.ts`. See `projects/raes-init/docs/raes.config.yaml` for a live example.
+### Artifact Boundary Rule
+
+Use this rule whenever a fact could plausibly fit in more than one artifact:
+
+- `raes-reference.md` owns shared RAES definitions and cross-tool contracts.
+- `prd.md` owns product-specific required behavior, scope, and non-goals for one tool.
+- `system.md` owns active durable constraints for one project. If the agent must obey a rule directly across future slices, it belongs here.
+- `decisions.md` owns rationale, tradeoffs, and adoption history for one project. It explains why a local choice was made; it does not become the shared RAES spec.
+- `execution-guidance.md` owns slice execution workflow rules for one project. It tells the operator or agent how to execute remaining slices; it does not redefine product requirements or shared RAES doctrine.
+- `pipeline.md` owns sequencing, backlog state, and slice-local handoff context. It is not the durable home for cross-project rules.
+
+Constraint promotion follows this boundary:
+
+1. Shared RAES rule or artifact definition: record it in `raes-reference.md`.
+2. Tool-specific required behavior: reflect it in that tool's `prd.md`.
+3. Tool-specific durable implementation constraint: promote it into that tool's `system.md`.
+4. Rationale for the choice: record it in that tool's `decisions.md`.
+
+### Config Location Contract
+
+- The canonical location of `raes.config.yaml` is the RAES project root, not `docs/`.
+- Canonical project layout is `<project>/raes.config.yaml` plus living loop docs under `<project>/docs/`.
+- `raes-init` should generate this layout by default.
+- `raes-execute` should read `./raes.config.yaml` from the current working directory by default and may support an explicit `--config <path>` override for monorepos.
+- RAES tools must not rely on implicit upward search or repo-wide discovery to pick a project config.
+
+Legacy repos may still contain `docs/raes.config.yaml` during migration. That layout is transitional only; it does not change the canonical contract above.
+
+**Config schema:** defined and implemented in `projects/raes-init/src/generate-docs.ts`. Existing project-local examples may still show the pre-migration `docs/raes.config.yaml` layout until their update slices land.
 
 ---
 
@@ -158,7 +186,7 @@ Initializes a greenfield project. Supports two modes:
 - **Bare greenfield** (`raes-init <target-path> <archetype>`) — generates stub docs with section structure and no content.
 - **PRD-seeded** (`raes-init --from-prd <prd-path> <target-path> <archetype>`) — generates docs adapted from an existing PRD file.
 
-Both modes produce the same eight-file output set in `<target>/docs/`: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, and `raes.config.yaml`. Write behavior is create-or-fail: no overwrite, no merge.
+Both modes produce the same RAES project layout: `raes.config.yaml` in `<target>/` plus seven living docs in `<target>/docs/`: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, and `validation.md`. Write behavior is create-or-fail: no overwrite, no merge.
 
 Current status: V1 implemented in TypeScript. Supports the `cli-doc-generator` archetype. Located at `projects/raes-init/`.
 
@@ -191,7 +219,7 @@ This structure is platform-agnostic — it does not assume a specific agent runt
 A single prompt handles both slice types. The agent identifies the slice type from the pipeline and applies the appropriate rules.
 
 ```
-Read `docs/raes.config.yaml` first and use it to locate the authoritative
+Read `raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
 - system constraints

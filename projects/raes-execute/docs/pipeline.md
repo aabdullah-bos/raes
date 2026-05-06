@@ -464,7 +464,7 @@
     - noisy delta streams are coalesced or truncated predictably
     - final confirmation prompt still appears after the full agent result
 
-- [ ] Slice 13m: Wire OpenAI provider selection to choose app-server transport when configured.
+- [x] Slice 13m: Wire OpenAI provider selection to choose app-server transport when configured.
   - Update provider factory logic so OpenAI selects `exec` or `app_server` based on config.
   - Preserve current authentication expectations and sandbox-related behavior.
   - Keep `exec` mode working as a fallback path during rollout.
@@ -558,6 +558,32 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13m — 2026-05-06
+
+**Execution completed.** Updated `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts` so OpenAI provider creation now honors `provider.openai.transport`, defaulting to `exec` and selecting a new `CodexAppServerProvider` wrapper when `app_server` is configured. The app-server path now returns structured `ProviderResult` failures for startup/authentication/protocol issues instead of rejecting through the execution/review loops, and `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts` plus `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts` now pass the slice cwd into provider creation so app-server turns run against the intended project root.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+
+**Tests added/updated:** `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts` now covers default/explicit OpenAI transport factory selection, `app_server` provider selection, JSON-RPC request failures surfacing as structured protocol errors, and app-server authentication failures returning actionable `codex login` guidance.
+
+**Validation run:**
+- `npm test -- provider.test.ts`
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** Slice 13n should build on the new structured app-server failure surface and add explicit recovery behavior for incomplete turns, malformed notifications, timeouts, and mid-turn subprocess exits. The current app-server path classifies startup/auth/protocol failures, but it still stops on first failure rather than retrying or downgrading to `exec`.
 
 ### Slice 13l — 2026-05-06
 

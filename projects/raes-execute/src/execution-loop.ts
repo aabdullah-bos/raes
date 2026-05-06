@@ -61,7 +61,7 @@ export async function runExecutionLoop(
   const out = io.out ?? ((l) => process.stdout.write(l + '\n'));
   const err = io.err ?? ((l) => process.stderr.write(l + '\n'));
   const readLine = io.in ?? defaultIn;
-  const provider = deps.provider ?? createProvider(config);
+  const provider = deps.provider ?? createProvider(config, cwd);
   const readPrompt = deps.loadPrompt ?? loadPrompt;
 
   const preflight = runSlicePreflight(config, cwd, readPrompt);

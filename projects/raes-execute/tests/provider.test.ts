@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaudeCodeProvider, CodexAppServerSession, CodexProvider, createProvider } from '../src/provider.ts';
+import { ClaudeCodeProvider, CodexAppServerProvider, CodexAppServerSession, CodexProvider, createProvider } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 import type { ProviderProgressEvent, ProviderSession, SpawnFn } from '../src/provider.ts';
 
-function makeConfig(providerName: 'anthropic' | 'openai', writeAccess?: boolean): RaesConfig {
+function makeConfig(
+  providerName: 'anthropic' | 'openai',
+  writeAccess?: boolean,
+  openaiTransport?: 'exec' | 'app_server',
+): RaesConfig {
   return {
     project: { name: 'test' },
     sources: {
@@ -17,6 +21,9 @@ function makeConfig(providerName: 'anthropic' | 'openai', writeAccess?: boolean)
     },
     provider: {
       name: providerName,
+      ...(providerName === 'openai' && openaiTransport
+        ? { openai: { transport: openaiTransport } }
+        : {}),
       ...(writeAccess !== undefined ? { sandbox: { write_access: writeAccess } } : {}),
     },
   };
@@ -719,7 +726,10 @@ test('CodexAppServerSession: JSON-RPC error response rejects the matching reques
   await Promise.resolve();
   mock.replyError('turn failed');
 
-  await assert.rejects(turnPromise, /turn failed/);
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /codex app-server protocol failure/i);
+  assert.match(result.error ?? '', /turn failed/i);
 
   const closePromise = session.close();
   mock.reply({});
@@ -755,6 +765,31 @@ test('createProvider: returns ClaudeCodeProvider for anthropic config', () => {
 test('createProvider: returns CodexProvider for openai config', () => {
   const provider = createProvider(makeConfig('openai'));
   assert.ok(provider instanceof CodexProvider);
+});
+
+test('createProvider: returns CodexProvider for explicit openai exec transport', () => {
+  const provider = createProvider(makeConfig('openai', undefined, 'exec'));
+  assert.ok(provider instanceof CodexProvider);
+});
+
+test('createProvider: returns CodexAppServerProvider for openai app_server transport', () => {
+  const provider = createProvider(makeConfig('openai', undefined, 'app_server'));
+  assert.ok(provider instanceof CodexAppServerProvider);
+});
+
+test('CodexAppServerSession: authentication failure returns actionable fix guidance', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true, 'app_server'), '/repo', mock.spawnFn);
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.emitStderr('Error: Not logged in. Please run codex login.');
+  mock.close(1);
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /authentication failure/i);
+  assert.match(result.fix ?? '', /codex login/i);
 });
 
 test('createProvider: throws for unknown provider name', () => {

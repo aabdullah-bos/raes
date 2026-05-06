@@ -130,6 +130,39 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function formatCodexAppServerError(error: unknown): ProviderResult {
+  const message = toErrorMessage(error);
+  if (AUTH_ERROR_RE.test(message)) {
+    return {
+      output: '',
+      error: `codex app-server authentication failure: ${message}`,
+      fix: 'Run `codex login` to authenticate before using the openai provider.',
+    };
+  }
+  if (message.includes('failed to parse codex app-server output as JSONL')) {
+    return {
+      output: '',
+      error: `codex app-server protocol failure: ${message}`,
+    };
+  }
+  if (message.includes('request failed:')) {
+    return {
+      output: '',
+      error: `codex app-server protocol failure: ${message}`,
+    };
+  }
+  if (message.includes('turn failed')) {
+    return {
+      output: '',
+      error: `codex app-server agent execution failure: ${message}`,
+    };
+  }
+  return {
+    output: '',
+    error: `codex app-server transport startup failure: ${message}`,
+  };
+}
+
 function makeAppServerPayloadError(line: string): ProviderResult {
   return {
     output: '',
@@ -241,7 +274,11 @@ export class CodexAppServerSession implements ProviderSession {
       };
     }
 
-    await this.start();
+    try {
+      await this.start();
+    } catch (error) {
+      return formatCodexAppServerError(error);
+    }
 
     if (!this.threadId) {
       return {
@@ -271,7 +308,7 @@ export class CodexAppServerSession implements ProviderSession {
       }
 
       this.sendRequest('turn/start', params).catch((error) => {
-        this.finishActiveTurnWithRejection(error);
+        this.finishActiveTurnWithError(error);
       });
     });
   }
@@ -461,10 +498,10 @@ export class CodexAppServerSession implements ProviderSession {
     this.activeTurn = undefined;
   }
 
-  private finishActiveTurnWithRejection(error: unknown): void {
+  private finishActiveTurnWithError(error: unknown): void {
     if (!this.activeTurn || this.activeTurn.done) return;
     this.activeTurn.done = true;
-    this.activeTurn.reject(new Error(toErrorMessage(error)));
+    this.activeTurn.resolve(formatCodexAppServerError(error));
     this.activeTurn = undefined;
   }
 
@@ -999,11 +1036,39 @@ export class CodexProvider extends OneShotProvider {
   }
 }
 
-export function createProvider(config: RaesConfig): Provider {
+export class CodexAppServerProvider implements Provider {
+  private config: RaesConfig;
+  private cwd: string;
+  private spawnFn: SpawnFn;
+
+  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
+    this.config = config;
+    this.cwd = cwd;
+    this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+  }
+
+  async startSession(): Promise<ProviderSession> {
+    return new CodexAppServerSession(this.config, this.cwd, this.spawnFn);
+  }
+
+  async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
+    const session = await this.startSession();
+    try {
+      return await session.submitTurn(prompt, hooks);
+    } finally {
+      await session.close();
+    }
+  }
+}
+
+export function createProvider(config: RaesConfig, cwd = process.cwd()): Provider {
   switch (config.provider.name) {
     case 'anthropic':
       return new ClaudeCodeProvider(config);
     case 'openai':
+      if (config.provider.openai?.transport === 'app_server') {
+        return new CodexAppServerProvider(config, cwd);
+      }
       return new CodexProvider(config);
     default:
       throw new Error(`unknown provider: ${(config.provider as { name?: string }).name ?? '(missing)'}`);

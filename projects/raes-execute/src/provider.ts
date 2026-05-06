@@ -56,6 +56,12 @@ interface SpawnedProcess {
 interface PendingRequest {
   resolve: (value: Record<string, unknown>) => void;
   reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
+interface CodexAppServerSessionOptions {
+  requestTimeoutMs?: number;
+  turnCompletionTimeoutMs?: number;
 }
 
 const AUTH_ERROR_RE = /not logged in|unauthorized|unauthenticated|authentication|login required|auth failed|authentication failed/i;
@@ -145,16 +151,34 @@ function formatCodexAppServerError(error: unknown): ProviderResult {
       error: `codex app-server protocol failure: ${message}`,
     };
   }
+  if (message.includes('notification missing') || message.includes('request timed out:')) {
+    return {
+      output: '',
+      error: `codex app-server protocol failure: ${message}`,
+    };
+  }
   if (message.includes('request failed:')) {
     return {
       output: '',
       error: `codex app-server protocol failure: ${message}`,
     };
   }
+  if (message.includes('incomplete turn')) {
+    return {
+      output: '',
+      error: `codex app-server agent execution failure: ${message}`,
+    };
+  }
   if (message.includes('turn failed')) {
     return {
       output: '',
       error: `codex app-server agent execution failure: ${message}`,
+    };
+  }
+  if (message.includes('exited before clean shutdown')) {
+    return {
+      output: '',
+      error: `codex app-server transport failure: ${message}`,
     };
   }
   return {
@@ -166,7 +190,7 @@ function formatCodexAppServerError(error: unknown): ProviderResult {
 function makeAppServerPayloadError(line: string): ProviderResult {
   return {
     output: '',
-    error: `failed to parse codex app-server output as JSONL: ${line.slice(0, 200)}`,
+    error: `codex app-server protocol failure: failed to parse codex app-server output as JSONL: ${line.slice(0, 200)}`,
   };
 }
 
@@ -222,9 +246,14 @@ abstract class OneShotProvider implements Provider {
 }
 
 export class CodexAppServerSession implements ProviderSession {
+  private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
+  private static readonly DEFAULT_TURN_COMPLETION_TIMEOUT_MS = 30_000;
+
   private config: RaesConfig;
   private cwd: string;
   private spawnFn: SpawnFn;
+  private requestTimeoutMs: number;
+  private turnCompletionTimeoutMs: number;
   private child: SpawnedProcess | null = null;
   private nextRequestId = 1;
   private stdoutBuffer = '';
@@ -241,13 +270,17 @@ export class CodexAppServerSession implements ProviderSession {
         resolve: (value: ProviderResult) => void;
         reject: (error: Error) => void;
         done: boolean;
+        timeout?: NodeJS.Timeout;
       }
     | undefined;
 
-  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
+  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn, options: CodexAppServerSessionOptions = {}) {
     this.config = config;
     this.cwd = cwd;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+    this.requestTimeoutMs = options.requestTimeoutMs ?? CodexAppServerSession.DEFAULT_REQUEST_TIMEOUT_MS;
+    this.turnCompletionTimeoutMs =
+      options.turnCompletionTimeoutMs ?? CodexAppServerSession.DEFAULT_TURN_COMPLETION_TIMEOUT_MS;
   }
 
   async start(): Promise<void> {
@@ -293,6 +326,13 @@ export class CodexAppServerSession implements ProviderSession {
         resolve,
         reject,
         done: false,
+        timeout: setTimeout(() => {
+          this.finishActiveTurnWithError(
+            new Error(
+              `incomplete turn: timed out waiting for turn/completed after ${this.turnCompletionTimeoutMs}ms`,
+            ),
+          );
+        }, this.turnCompletionTimeoutMs),
       };
 
       const params: Record<string, unknown> = {
@@ -403,9 +443,17 @@ export class CodexAppServerSession implements ProviderSession {
       return Promise.reject(new Error('codex app-server subprocess is not available'));
     }
 
-    const id = this.nextRequestId++;
+      const id = this.nextRequestId++;
     return new Promise<Record<string, unknown>>((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`request timed out: ${method} after ${this.requestTimeoutMs}ms`));
+      }, this.requestTimeoutMs);
+      this.pendingRequests.set(id, {
+        resolve,
+        reject,
+        timeout,
+      });
       this.writeMessage({ id, method, params });
     });
   }
@@ -433,6 +481,7 @@ export class CodexAppServerSession implements ProviderSession {
       const pending = this.pendingRequests.get(id);
       if (!pending) return undefined;
       this.pendingRequests.delete(id);
+      clearTimeout(pending.timeout);
 
       const error = readJsonRpcError(message['error']);
       if (error) {
@@ -462,6 +511,10 @@ export class CodexAppServerSession implements ProviderSession {
 
     if (method === 'turn/completed') {
       const turn = extractTurnRecord(params);
+      if (!turn) {
+        this.finishActiveTurnWithError(new Error('turn/completed notification missing turn payload'));
+        return;
+      }
       const status = readNonEmptyString(turn?.['status']) ?? 'completed';
       if (status === 'failed') {
         const message =
@@ -482,6 +535,7 @@ export class CodexAppServerSession implements ProviderSession {
 
   private resolveMalformedPayload(result: ProviderResult): void {
     for (const pending of this.pendingRequests.values()) {
+      clearTimeout(pending.timeout);
       pending.reject(new Error(result.error ?? 'codex app-server emitted malformed output'));
     }
     this.pendingRequests.clear();
@@ -494,6 +548,9 @@ export class CodexAppServerSession implements ProviderSession {
   private finishActiveTurn(result: ProviderResult): void {
     if (!this.activeTurn || this.activeTurn.done) return;
     this.activeTurn.done = true;
+    if (this.activeTurn.timeout) {
+      clearTimeout(this.activeTurn.timeout);
+    }
     this.activeTurn.resolve(result);
     this.activeTurn = undefined;
   }
@@ -501,6 +558,9 @@ export class CodexAppServerSession implements ProviderSession {
   private finishActiveTurnWithError(error: unknown): void {
     if (!this.activeTurn || this.activeTurn.done) return;
     this.activeTurn.done = true;
+    if (this.activeTurn.timeout) {
+      clearTimeout(this.activeTurn.timeout);
+    }
     this.activeTurn.resolve(formatCodexAppServerError(error));
     this.activeTurn = undefined;
   }
@@ -514,15 +574,13 @@ export class CodexAppServerSession implements ProviderSession {
     );
 
     for (const pending of this.pendingRequests.values()) {
+      clearTimeout(pending.timeout);
       pending.reject(error);
     }
     this.pendingRequests.clear();
 
     if (this.activeTurn && !this.activeTurn.done) {
-      this.finishActiveTurn({
-        output: '',
-        error: error.message,
-      });
+      this.finishActiveTurn(formatCodexAppServerError(error));
     }
   }
 }

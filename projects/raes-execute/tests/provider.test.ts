@@ -792,6 +792,135 @@ test('CodexAppServerSession: authentication failure returns actionable fix guida
   assert.match(result.fix ?? '', /codex login/i);
 });
 
+test('CodexAppServerSession: startup failure returns a structured transport error', async () => {
+  const spawnFn: SpawnFn = () => {
+    throw new Error('spawn codex ENOENT');
+  };
+  const session = new CodexAppServerSession(
+    makeConfig('openai', true, 'app_server'),
+    '/repo',
+    spawnFn,
+  );
+
+  const result = await session.submitTurn('Implement the slice');
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /transport startup failure/i);
+  assert.match(result.error ?? '', /ENOENT/i);
+});
+
+test('CodexAppServerSession: JSON-RPC timeout returns a structured protocol error', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(
+    makeConfig('openai', true, 'app_server'),
+    '/repo',
+    mock.spawnFn,
+    { requestTimeoutMs: 10, turnCompletionTimeoutMs: 25 },
+  );
+
+  const resultPromise = session.submitTurn('Implement the slice');
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  const result = await resultPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /protocol failure/i);
+  assert.match(result.error ?? '', /request timed out/i);
+});
+
+test('CodexAppServerSession: incomplete turn returns a structured agent execution failure', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(
+    makeConfig('openai', true, 'app_server'),
+    '/repo',
+    mock.spawnFn,
+    { requestTimeoutMs: 25, turnCompletionTimeoutMs: 10 },
+  );
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /agent execution failure/i);
+  assert.match(result.error ?? '', /incomplete turn/i);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: malformed turn completion notification returns a structured protocol error', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true, 'app_server'), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  mock.emitStdout({ method: 'turn/completed', params: {} });
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /protocol failure/i);
+  assert.match(result.error ?? '', /turn\/completed notification missing turn payload/i);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: subprocess termination mid-turn returns a structured transport error', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true, 'app_server'), '/repo', mock.spawnFn);
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.emitStderr('transport died');
+  mock.close(1);
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /transport failure/i);
+  assert.match(result.error ?? '', /exited before clean shutdown/i);
+});
+
 test('createProvider: throws for unknown provider name', () => {
   const badConfig = {
     ...makeConfig('anthropic'),

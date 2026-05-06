@@ -479,7 +479,7 @@
     - OpenAI provider error paths remain structured and actionable
     - existing Claude factory behavior is unchanged
 
-- [ ] Slice 13n: Add failure-recovery behavior for Codex app-server execution.
+- [x] Slice 13n: Add failure-recovery behavior for Codex app-server execution.
   - Define and implement recovery or failure behavior for:
     - startup failure
     - JSON-RPC timeout or no response
@@ -558,6 +558,33 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13n — 2026-05-06
+
+**Execution completed.** Updated `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts` so `CodexAppServerSession` now applies explicit recovery/failure behavior for the remaining app-server gaps from Slice 13n: request timeouts, incomplete turns, malformed `turn/completed` notifications, and mid-turn subprocess exits now resolve to structured `ProviderResult` errors labeled as protocol, agent-execution, or transport failures as appropriate. Existing execution/review loop behavior was preserved: provider failures still return exit code 2 and do not write pipeline changes.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/execution-loop.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/review-loop.test.ts`
+
+**Tests added/updated:** `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts` now covers app-server startup failure, JSON-RPC timeout/no-response, incomplete turn timeout, malformed `turn/completed` notifications, and subprocess termination mid-turn. No new loop tests were needed because execution and review loops already had passing no-write-on-provider-error coverage, and those protections remained unchanged.
+
+**Validation run:**
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** Slice 13o should review whether the new failure labels and timeout behavior improve operator observability without adding too much noise. The current defaults are a 5s request timeout and a 30s turn-completion timeout; if review finds those thresholds too aggressive or too lax, adjust them deliberately rather than implicitly in later transport work.
 
 ### Slice 13m — 2026-05-06
 

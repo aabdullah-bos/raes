@@ -5,7 +5,7 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
-import { createProgressRenderer } from './progress-renderer.ts';
+import { createProgressRenderer, type ProgressVerbosity } from './progress-renderer.ts';
 import { createProvider, type Provider, type ProviderResult } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
@@ -55,12 +55,13 @@ export async function runExecutionLoop(
   slice: Slice,
   config: RaesConfig,
   cwd: string,
-  io: { out?: (l: string) => void; err?: (l: string) => void; in?: () => Promise<string | null> },
+  io: { out?: (l: string) => void; err?: (l: string) => void; in?: () => Promise<string | null>; verbosity?: ProgressVerbosity },
   deps: ExecutionLoopDeps = {},
 ): Promise<ExecutionLoopResult> {
   const out = io.out ?? ((l) => process.stdout.write(l + '\n'));
   const err = io.err ?? ((l) => process.stderr.write(l + '\n'));
   const readLine = io.in ?? defaultIn;
+  const verbosity = io.verbosity ?? 'progress';
   const provider = deps.provider ?? createProvider(config, cwd);
   const readPrompt = deps.loadPrompt ?? loadPrompt;
 
@@ -78,11 +79,12 @@ export async function runExecutionLoop(
   out('');
 
   const session = await provider.startSession();
-  const progress = createProgressRenderer({ out, err });
+  const progress = createProgressRenderer({ out, err }, verbosity);
   let result: ProviderResult;
   try {
     result = await session.submitTurn(prompt, {
       onProgress: (event) => progress.push(event),
+      rawEvents: verbosity === 'debug',
     });
   } finally {
     progress.flush();

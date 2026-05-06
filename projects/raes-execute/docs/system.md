@@ -34,6 +34,7 @@ The project is initialized from the PRD `RAES Execute` using the `cli` archetype
 - External system interactions must go through an explicit adapter or service boundary.
 - State files written or modified by the tool must have an explicit format and write behavior.
 - The configured pipeline artifact is the source of truth for slice order and completion status.
+- The child provider/agent may append operational notes or findings to artifacts in their correct RAES roles, but only the parent loop may mark a slice complete in the backlog, and only after explicit operator confirmation.
 
 ## Unknowns
 

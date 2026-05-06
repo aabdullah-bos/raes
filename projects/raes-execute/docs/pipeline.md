@@ -505,6 +505,24 @@
   - No implementation code in this slice.
   - No new slices required unless the review finds concrete gaps.
 
+- [x] Slice Omega-1: Review Slice
+  - this is a review slice to test app_server
+  - do not run any tests or provide any changes to the code
+
+- [ ] Slice 13o-1: Handle Codex app-server session-directory startup failures.
+  - Detect the case where the OpenAI app-server transport cannot create or
+    access Codex session state under `~/.codex/sessions` during startup or
+    `thread/start`.
+  - Return a structured ProviderResult error with actionable fix guidance
+    instead of a generic protocol failure. The fix must tell the operator to
+    repair ownership/permissions for `~/.codex/sessions` (or `~/.codex`) and
+    retry after `codex login` if authentication state was lost.
+  - Keep execution/review loop behavior unchanged: print the structured error
+    on stderr, exit 2, and write no artifacts.
+  - Tests: mock the app-server JSON-RPC failure for thread creation/session
+    persistence and assert structured error classification, fix guidance, and
+    no artifact write in CLI-path execution.
+
 - [ ] Slice 13g-1: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
     on PATH before or during subprocess spawn, and return a structured
@@ -558,6 +576,32 @@
 ---
 
 ## Handoff Notes
+
+### Slice Omega-1 — 2026-05-06
+
+**Review completed.** This slice required a live app-server sanity check and no code changes. I inspected the authoritative artifacts first (`docs/prd.md`, `docs/system.md`, `docs/execution-guidance.md`, `docs/decisions.md`, `docs/validation.md`, `docs/pipeline.md`), then reviewed the current OpenAI transport implementation in `src/provider.ts`, `src/execution-loop.ts`, `src/review-loop.ts`, `src/progress-renderer.ts`, and `src/cli.ts`.
+
+**Live app-server result.**
+- Command run from `projects/raes-execute/`: `node --experimental-strip-types src/cli.ts --config docs/raes.config.yaml --execute-next-slice`
+- Observed runtime output reached the configured review slice and started the OpenAI app-server path:
+  - `Next:        Slice Omega-1: Review Slice`
+  - `Loop:        Review Loop`
+  - `Boundaries:  ok`
+  - `Provider:    started; waiting for progress...`
+- The live run then failed before turn execution with:
+  - `error: codex app-server protocol failure: codex app-server request failed: error creating thread: Fatal error: Codex cannot access session files at /Users/aquilabdullah/.codex/sessions (permission denied)...`
+
+**Findings.**
+- The OpenAI app-server transport is wired through the real CLI path and gets past preflight into provider startup, so the transport selection and session bootstrap path are active in runtime, not just in tests.
+- Current failure classification is too coarse for this environment. A filesystem/session-state permission failure is surfaced as a generic protocol failure, with no fix string, even though the underlying problem is operator-actionable.
+- This is a concrete gap relative to build intent and execution guidance: the product is supposed to halt with actionable errors when blocked, and this runtime block currently lacks operator-grade guidance.
+- No execution-guidance update was added. The finding is immediate implementation follow-up, not a durable cross-slice workflow rule.
+
+**Pipeline updates from this review.**
+- Marked `Slice Omega-1` complete.
+- Added `Slice 13o-1` immediately after it to capture the newly discovered app-server session-directory failure mode.
+
+**Next recommended slice:** `Slice 13o-1` should run before `Slice 13g-1`, because the live app-server path is currently blocked by a concrete startup failure that is neither missing-binary handling nor just output polish.
 
 ### Slice 13o — 2026-05-06
 

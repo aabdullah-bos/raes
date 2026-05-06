@@ -221,9 +221,32 @@ test('runExecutionLoop: renders rich structured progress before final output', a
         provider: providerWithProgress(
           [
             { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'turn/started' },
+            {
+              kind: 'status',
+              text: 'command_execution started',
+              phase: 'command',
+              eventType: 'item/started',
+              item: { kind: 'command_execution', command: 'npm test', status: 'inProgress' },
+              command: 'npm test',
+            },
             { kind: 'tool', text: 'Running npm test', phase: 'command', command: 'npm test', delta: 'PASS src/example.test.ts' },
+            {
+              kind: 'status',
+              text: 'command_execution completed',
+              phase: 'command',
+              eventType: 'item/completed',
+              item: { kind: 'command_execution', command: 'npm test', status: 'completed', exitCode: 0 },
+              command: 'npm test',
+            },
             { kind: 'status', text: 'Plan updated', phase: 'plan', plan: [{ step: 'Run tests', status: 'completed' }] },
-            { kind: 'status', text: 'Diff updated', phase: 'diff', files: [{ path: 'src/example.ts', status: 'modified' }] },
+            {
+              kind: 'status',
+              text: 'file_change completed',
+              phase: 'diff',
+              eventType: 'item/completed',
+              item: { kind: 'file_change', status: 'completed', changes: [{ path: 'src/example.ts', kind: 'modified' }] },
+              files: [{ path: 'src/example.ts', kind: 'modified' }],
+            },
           ],
           { output: 'agent output line' },
         ),
@@ -232,8 +255,13 @@ test('runExecutionLoop: renders rich structured progress before final output', a
     );
     assert.equal(result.exitCode, 0);
     assert.ok(out.includes('[status] Agent turn started'));
+    assert.ok(out.includes('[tool] command_execution started'));
     assert.ok(out.includes('[tool] Running npm test'));
+    assert.ok(out.includes('[tool] command_execution completed'));
     assert.ok(out.includes('  command: npm test'));
+    assert.ok(out.includes('  status: inProgress'));
+    assert.ok(out.includes('  status: completed'));
+    assert.ok(out.includes('  exit: 0'));
     assert.ok(out.includes('  output: PASS src/example.test.ts'));
     assert.ok(out.includes('[plan] Run tests [completed]'));
     assert.ok(out.includes('[diff] src/example.ts (modified)'));

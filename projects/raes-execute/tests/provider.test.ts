@@ -438,7 +438,7 @@ test('CodexAppServerSession: correlates requests, streams notifications, and ret
   assert.equal(params.threadId, 'thread-1');
   assert.equal((params.input as Array<Record<string, unknown>>)[0].text, 'Implement the slice');
   assert.equal(params.cwd, '/repo');
-  assert.equal(params.sandboxPolicy, 'workspace-write');
+  assert.deepEqual(params.sandboxPolicy, { type: 'workspaceWrite' });
 
   mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
   mock.emitStdout({ method: 'item/started', params: { item: { type: 'reasoning' } } });
@@ -491,12 +491,53 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
   });
   await Promise.resolve();
 
+  mock.emitStdout({
+    method: 'thread/started',
+    params: {
+      thread: { id: 'thread-1' },
+    },
+  });
+  mock.emitStdout({
+    method: 'mcpServer/startupStatus/updated',
+    params: {
+      name: 'codex_apps',
+      status: 'ready',
+      error: null,
+    },
+  });
+  mock.emitStdout({
+    method: 'thread/status/changed',
+    params: {
+      threadId: 'thread-1',
+      status: { type: 'active', activeFlags: [] },
+    },
+  });
   mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
-  mock.emitStdout({ method: 'item/started', params: { item: { id: 'item-1', type: 'reasoning' } } });
+  mock.emitStdout({
+    method: 'item/started',
+    params: {
+      item: {
+        id: 'item-1',
+        type: 'reasoning',
+      },
+    },
+  });
+  mock.emitStdout({
+    method: 'item/started',
+    params: {
+      item: {
+        id: 'item-3',
+        type: 'commandExecution',
+        command: 'npm test',
+        cwd: '/repo',
+        status: 'inProgress',
+      },
+    },
+  });
   mock.emitStdout({
     method: 'item/agentMessage/delta',
     params: {
-      item: { id: 'item-2', type: 'agent_message' },
+      item: { id: 'item-2', type: 'agentMessage' },
       delta: { text: 'Thinking through the boundary checks' },
     },
   });
@@ -510,8 +551,32 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
   mock.emitStdout({
     method: 'item/commandExecution/outputDelta',
     params: {
-      item: { id: 'item-3', type: 'command_execution', command: 'npm test' },
+      item: { id: 'item-3', type: 'commandExecution', command: 'npm test' },
       delta: { text: 'ok 12 tests\n' },
+    },
+  });
+  mock.emitStdout({
+    method: 'item/completed',
+    params: {
+      item: {
+        id: 'item-3',
+        type: 'commandExecution',
+        command: 'npm test',
+        status: 'completed',
+        exitCode: 0,
+        durationMs: 42,
+      },
+    },
+  });
+  mock.emitStdout({
+    method: 'item/completed',
+    params: {
+      item: {
+        id: 'item-4',
+        type: 'fileChange',
+        status: 'completed',
+        changes: [{ path: 'src/provider.ts', kind: 'modified' }],
+      },
     },
   });
   mock.emitStdout({
@@ -538,6 +603,24 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
   assert.deepEqual(events, [
     {
       kind: 'status',
+      text: 'Session started',
+      phase: 'turn',
+      eventType: 'thread/started',
+    },
+    {
+      kind: 'status',
+      text: 'MCP codex_apps ready',
+      phase: 'unknown',
+      eventType: 'mcpServer/startupStatus/updated',
+    },
+    {
+      kind: 'status',
+      text: 'Session active',
+      phase: 'turn',
+      eventType: 'thread/status/changed',
+    },
+    {
+      kind: 'status',
       text: 'Agent turn started',
       phase: 'turn',
       eventType: 'turn/started',
@@ -548,6 +631,20 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
       phase: 'item',
       eventType: 'item/started',
       item: { id: 'item-1', kind: 'reasoning' },
+    },
+    {
+      kind: 'status',
+      text: 'command_execution started',
+      phase: 'command',
+      eventType: 'item/started',
+      item: {
+        id: 'item-3',
+        kind: 'command_execution',
+        command: 'npm test',
+        cwd: '/repo',
+        status: 'inProgress',
+      },
+      command: 'npm test',
     },
     {
       kind: 'message',
@@ -570,9 +667,37 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
       text: 'npm test',
       phase: 'command',
       eventType: 'item/commandExecution/outputDelta',
-      item: { id: 'item-3', kind: 'command_execution' },
+      item: { id: 'item-3', kind: 'command_execution', command: 'npm test' },
       command: 'npm test',
       delta: 'ok 12 tests\n',
+    },
+    {
+      kind: 'status',
+      text: 'command_execution completed',
+      phase: 'command',
+      eventType: 'item/completed',
+      item: {
+        id: 'item-3',
+        kind: 'command_execution',
+        command: 'npm test',
+        status: 'completed',
+        exitCode: 0,
+        durationMs: 42,
+      },
+      command: 'npm test',
+    },
+    {
+      kind: 'status',
+      text: 'file_change completed',
+      phase: 'diff',
+      eventType: 'item/completed',
+      item: {
+        id: 'item-4',
+        kind: 'file_change',
+        status: 'completed',
+        changes: [{ path: 'src/provider.ts', kind: 'modified' }],
+      },
+      files: [{ path: 'src/provider.ts', kind: 'modified' }],
     },
     {
       kind: 'status',
@@ -601,6 +726,66 @@ test('CodexAppServerSession: normalizes supported app-server notifications into 
   mock.reply({});
   mock.close(0);
   await closePromise;
+});
+
+test('CodexAppServerSession: emits raw notification debug events when RAES_DEBUG_CODEX_EVENTS is set', async () => {
+  const previous = process.env['RAES_DEBUG_CODEX_EVENTS'];
+  process.env['RAES_DEBUG_CODEX_EVENTS'] = '1';
+  const events: ProviderProgressEvent[] = [];
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true), '/repo', mock.spawnFn);
+
+  try {
+    const startup = session.start();
+    mock.reply({
+      userAgent: 'codex-test',
+      codexHome: '/tmp/codex-home',
+      platformFamily: 'unix',
+      platformOs: 'darwin',
+    });
+    await Promise.resolve();
+    mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+    mock.reply({ thread: { id: 'thread-1' } });
+    await startup;
+
+    const turnPromise = session.submitTurn('Implement the slice', {
+      onProgress: (event) => events.push(event),
+      rawEvents: true,
+    });
+    await Promise.resolve();
+
+    mock.emitStdout({ method: 'turn/started', params: { turn: { id: 'turn-1' } } });
+    mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+    mock.emitStdout({
+      method: 'turn/completed',
+      params: { turn: { id: 'turn-1', status: 'completed', output_text: 'done' } },
+    });
+
+    const result = await turnPromise;
+    assert.equal(result.output, 'done');
+    assert.deepEqual(events[0], {
+      kind: 'warning',
+      text: 'raw turn/started: {"turn":{"id":"turn-1"}}',
+      phase: 'unknown',
+      eventType: 'turn/started',
+    });
+    assert.deepEqual(events[2], {
+      kind: 'warning',
+      text: 'raw turn/completed: {"turn":{"id":"turn-1","status":"completed","output_text":"done"}}',
+      phase: 'unknown',
+      eventType: 'turn/completed',
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env['RAES_DEBUG_CODEX_EVENTS'];
+    } else {
+      process.env['RAES_DEBUG_CODEX_EVENTS'] = previous;
+    }
+    const closePromise = session.close();
+    mock.reply({});
+    mock.close(0);
+    await closePromise;
+  }
 });
 
 test('CodexAppServerSession: unsupported notifications degrade safely without failing the turn', async () => {
@@ -855,6 +1040,43 @@ test('CodexAppServerSession: incomplete turn returns a structured agent executio
   assert.equal(result.output, '');
   assert.match(result.error ?? '', /agent execution failure/i);
   assert.match(result.error ?? '', /incomplete turn/i);
+
+  const closePromise = session.close();
+  mock.reply({});
+  mock.close(0);
+  await closePromise;
+});
+
+test('CodexAppServerSession: production default incomplete-turn timeout is 120 seconds', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(
+    makeConfig('openai', true, 'app_server'),
+    '/repo',
+    mock.spawnFn,
+  );
+
+  const startup = session.start();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.emitStdout({ method: 'thread/started', params: { thread: { id: 'thread-1' } } });
+  mock.reply({ thread: { id: 'thread-1' } });
+  await startup;
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({ turn: { id: 'turn-1', status: 'inProgress' } });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const turnPending = await Promise.race([
+    turnPromise.then(() => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 0)),
+  ]);
+  assert.equal(turnPending, true, 'expected default timeout to exceed 20ms');
 
   const closePromise = session.close();
   mock.reply({});

@@ -7,6 +7,7 @@ import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType 
 import { runExecutionLoop } from './execution-loop.ts';
 import { runReviewLoop } from './review-loop.ts';
 import type { Provider } from './provider.ts';
+import type { ProgressVerbosity } from './progress-renderer.ts';
 import { getPromptPath } from './prompt.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
@@ -30,6 +31,7 @@ Options:
   -e, --execute-next-slice Execute the next unchecked slice (Execution or Review loop)
       --config             Use an explicit raes.config.yaml path
       --dry-run            Preflight --execute-next-slice without provider submission or writes
+      --verbosity          Progress output: quiet | progress | debug
       --flag               Register an ambiguity, blocking issue, or known problem
       --history            List most recent N executed slices
       --version            Show version
@@ -44,6 +46,7 @@ const KNOWN_FLAGS = new Set([
   '--execute-next-slice', '-e',
   '--config',
   '--dry-run',
+  '--verbosity',
   '--flag',
   '--history',
   '--version',
@@ -55,6 +58,7 @@ export interface IO {
   err?: (line: string) => void;
   in?: () => Promise<string | null>;
   cwd?: string;
+  verbosity?: ProgressVerbosity;
   provider?: Provider;
   loadPrompt?: () => string;
 }
@@ -81,6 +85,7 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
   let printArtifactName: string | undefined;
   let configPathOverride: string | undefined;
   let dryRun = false;
+  let verbosity: ProgressVerbosity = io.verbosity ?? (process.env['RAES_DEBUG_CODEX_EVENTS'] ? 'debug' : 'progress');
 
   {
     let i = 0;
@@ -118,6 +123,26 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
         }
         if (arg === '--dry-run') {
           dryRun = true;
+          i++;
+          continue;
+        }
+        if (arg === '--verbosity') {
+          const next = argv[i + 1];
+          if (next === undefined || next.startsWith('-')) {
+            err(`error: --verbosity requires a value`);
+            err(`       usage: --verbosity <quiet|progress|debug>`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          if (next !== 'quiet' && next !== 'progress' && next !== 'debug') {
+            err(`error: invalid value for --verbosity: ${next}`);
+            err(`       expected one of: quiet | progress | debug`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          verbosity = next;
+          i += 2;
+          continue;
         }
       } else {
         err(`error: unexpected argument: ${arg}`);
@@ -291,12 +316,12 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
       return { exitCode: 0 };
     }
     if (loopType === 'execution') {
-      return runExecutionLoop(nextSlice, config, projectRoot, io, {
+      return runExecutionLoop(nextSlice, config, projectRoot, { ...io, verbosity }, {
         provider: io.provider,
         loadPrompt: io.loadPrompt,
       });
     }
-    return runReviewLoop(nextSlice, config, projectRoot, io, {
+    return runReviewLoop(nextSlice, config, projectRoot, { ...io, verbosity }, {
       provider: io.provider,
       loadPrompt: io.loadPrompt,
     });

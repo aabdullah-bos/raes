@@ -162,8 +162,23 @@ test('runReviewLoop: renders rich structured progress before final output', asyn
           [
             { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'turn/started' },
             { kind: 'message', text: 'Comparing current state to build intent', phase: 'message' },
+            {
+              kind: 'status',
+              text: 'command_execution completed',
+              phase: 'command',
+              eventType: 'item/completed',
+              item: { kind: 'command_execution', command: 'git diff --stat', status: 'completed', exitCode: 0 },
+              command: 'git diff --stat',
+            },
             { kind: 'status', text: 'Plan updated', phase: 'plan', plan: [{ step: 'Inspect pipeline', status: 'completed' }] },
-            { kind: 'status', text: 'Diff updated', phase: 'diff', files: [{ path: 'docs/pipeline.md', status: 'modified' }] },
+            {
+              kind: 'status',
+              text: 'file_change completed',
+              phase: 'diff',
+              eventType: 'item/completed',
+              item: { kind: 'file_change', status: 'completed', changes: [{ path: 'docs/pipeline.md', kind: 'modified' }] },
+              files: [{ path: 'docs/pipeline.md', kind: 'modified' }],
+            },
           ],
           { output: 'review output line' },
         ),
@@ -173,6 +188,10 @@ test('runReviewLoop: renders rich structured progress before final output', asyn
     assert.equal(result.exitCode, 0);
     assert.ok(out.includes('[status] Agent turn started'));
     assert.ok(out.includes('[message] Comparing current state to build intent'));
+    assert.ok(out.includes('[tool] command_execution completed'));
+    assert.ok(out.includes('  command: git diff --stat'));
+    assert.ok(out.includes('  status: completed'));
+    assert.ok(out.includes('  exit: 0'));
     assert.ok(out.includes('[plan] Inspect pipeline [completed]'));
     assert.ok(out.includes('[diff] docs/pipeline.md (modified)'));
     const finalOutputIndex = out.indexOf('review output line');

@@ -15,6 +15,12 @@ export interface ProviderProgressEvent {
   item?: {
     id?: string;
     kind?: string;
+    command?: string;
+    cwd?: string;
+    status?: string;
+    exitCode?: number;
+    durationMs?: number;
+    changes?: Array<Record<string, unknown>>;
   };
   command?: string;
   delta?: string;
@@ -24,6 +30,7 @@ export interface ProviderProgressEvent {
 
 export interface ProviderHooks {
   onProgress?: (event: ProviderProgressEvent) => void;
+  rawEvents?: boolean;
 }
 
 export interface ProviderSession {
@@ -247,7 +254,7 @@ abstract class OneShotProvider implements Provider {
 
 export class CodexAppServerSession implements ProviderSession {
   private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
-  private static readonly DEFAULT_TURN_COMPLETION_TIMEOUT_MS = 30_000;
+  private static readonly DEFAULT_TURN_COMPLETION_TIMEOUT_MS = 120_000;
 
   private config: RaesConfig;
   private cwd: string;
@@ -344,7 +351,9 @@ export class CodexAppServerSession implements ProviderSession {
         params['model'] = this.config.provider.model;
       }
       if (this.config.provider.sandbox?.write_access !== false) {
-        params['sandboxPolicy'] = 'workspace-write';
+        params['sandboxPolicy'] = {
+          type: 'workspaceWrite',
+        };
       }
 
       this.sendRequest('turn/start', params).catch((error) => {
@@ -509,6 +518,10 @@ export class CodexAppServerSession implements ProviderSession {
       return;
     }
 
+    if (shouldEmitRawEvents(this.activeTurn.hooks)) {
+      emitProgress(this.activeTurn.hooks, makeRawNotificationDebugEvent(method, params));
+    }
+
     if (method === 'turn/completed') {
       const turn = extractTurnRecord(params);
       if (!turn) {
@@ -630,12 +643,28 @@ function normalizeEventType(type: string | undefined): string | undefined {
 
 function summarizeCodexItemKind(item: Record<string, unknown> | undefined): string | undefined {
   if (!item) return undefined;
-  return (
+  const rawKind = (
     readNonEmptyString(item['kind']) ??
     readNonEmptyString(item['type']) ??
     readNonEmptyString(item['item_type']) ??
     readNonEmptyString(item['role'])
   );
+  if (!rawKind) return undefined;
+
+  switch (rawKind) {
+    case 'agentMessage':
+      return 'agent_message';
+    case 'userMessage':
+      return 'user_message';
+    case 'commandExecution':
+      return 'command_execution';
+    case 'fileChange':
+      return 'file_change';
+    case 'contextCompaction':
+      return 'context_compaction';
+    default:
+      return rawKind;
+  }
 }
 
 function extractProgressItem(item: Record<string, unknown> | undefined): ProviderProgressEvent['item'] | undefined {
@@ -643,9 +672,26 @@ function extractProgressItem(item: Record<string, unknown> | undefined): Provide
 
   const id = readNonEmptyString(item['id']);
   const kind = summarizeCodexItemKind(item);
-  if (!id && !kind) return undefined;
+  const command = readNonEmptyString(item['command']);
+  const cwd = readNonEmptyString(item['cwd']);
+  const status = readNonEmptyString(item['status']);
+  const exitCode = typeof item['exitCode'] === 'number' ? item['exitCode'] : undefined;
+  const durationMs = typeof item['durationMs'] === 'number' ? item['durationMs'] : undefined;
+  const changes = readArray(item['changes']);
+  if (!id && !kind && !command && !cwd && !status && exitCode === undefined && durationMs === undefined && !changes) {
+    return undefined;
+  }
 
-  return { ...(id ? { id } : {}), ...(kind ? { kind } : {}) };
+  return {
+    ...(id ? { id } : {}),
+    ...(kind ? { kind } : {}),
+    ...(command ? { command } : {}),
+    ...(cwd ? { cwd } : {}),
+    ...(status ? { status } : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(changes ? { changes } : {}),
+  };
 }
 
 function extractDeltaText(event: Record<string, unknown>): string | undefined {
@@ -672,13 +718,74 @@ function extractCommandText(event: Record<string, unknown>): string | undefined 
   );
 }
 
+function extractFileChanges(event: Record<string, unknown>): Array<Record<string, unknown>> | undefined {
+  const item = readRecord(event['item']);
+  return (
+    readArray(item?.['changes']) ??
+    readArray(item?.['files']) ??
+    readArray(event['changes']) ??
+    readArray(event['files'])
+  );
+}
+
+function makeRawNotificationDebugEvent(
+  method: string,
+  params: Record<string, unknown> | undefined,
+): ProviderProgressEvent {
+  return {
+    kind: 'warning',
+    text: `raw ${method}: ${JSON.stringify(params ?? {})}`,
+    phase: 'unknown',
+    eventType: method,
+  };
+}
+
+function shouldEmitRawEvents(hooks: ProviderHooks | undefined): boolean {
+  if (hooks?.rawEvents !== undefined) {
+    return hooks.rawEvents;
+  }
+
+  const value = process.env['RAES_DEBUG_CODEX_EVENTS'];
+  return value === '1' || value === 'true';
+}
+
 function normalizeAppServerEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {
   const eventType = readString(event['type']);
   if (!eventType || eventType === 'turn/completed') return undefined;
 
   const item = extractProgressItem(readRecord(event['item']));
+  const command = extractCommandText(event) ?? item?.command;
+  const files = extractFileChanges(event) ?? item?.changes;
 
   switch (eventType) {
+    case 'thread/started':
+      return {
+        kind: 'status',
+        text: 'Session started',
+        phase: 'turn',
+        eventType,
+      };
+    case 'thread/status/changed': {
+      const status = readRecord(event['status']);
+      const statusType = readNonEmptyString(status?.['type']) ?? 'updated';
+      return {
+        kind: 'status',
+        text: `Session ${statusType}`,
+        phase: 'turn',
+        eventType,
+      };
+    }
+    case 'mcpServer/startupStatus/updated': {
+      const name = readNonEmptyString(event['name']) ?? 'unknown';
+      const status = readNonEmptyString(event['status']) ?? 'updated';
+      const error = readNonEmptyString(event['error']);
+      return {
+        kind: error ? 'warning' : 'status',
+        text: error ? `MCP ${name} ${status}: ${error}` : `MCP ${name} ${status}`,
+        phase: 'unknown',
+        eventType,
+      };
+    }
     case 'turn/started':
       return {
         kind: 'status',
@@ -690,17 +797,21 @@ function normalizeAppServerEvent(event: Record<string, unknown>): ProviderProgre
       return {
         kind: 'status',
         text: item?.kind ? `${item.kind} started` : 'Work item started',
-        phase: 'item',
+        phase: item?.kind === 'command_execution' ? 'command' : item?.kind === 'file_change' ? 'diff' : 'item',
         eventType,
         ...(item ? { item } : {}),
+        ...(command ? { command } : {}),
+        ...(files ? { files } : {}),
       };
     case 'item/completed':
       return {
         kind: 'status',
         text: item?.kind ? `${item.kind} completed` : 'Work item completed',
-        phase: 'item',
+        phase: item?.kind === 'command_execution' ? 'command' : item?.kind === 'file_change' ? 'diff' : 'item',
         eventType,
         ...(item ? { item } : {}),
+        ...(command ? { command } : {}),
+        ...(files ? { files } : {}),
       };
     case 'item/agentMessage/delta': {
       const delta = extractDeltaText(event) ?? 'Agent message delta received';

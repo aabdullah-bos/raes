@@ -35,6 +35,9 @@ Rules:
   operational state from this slice only: what was left incomplete, what was
   discovered mid-slice, and what the next operator needs to pick up — do not
   restate guidance or constraints already present in execution-guidance
+- you may append operational notes to artifacts in their correct RAES roles,
+  but do not mark the slice complete in the backlog; slice completion is
+  recorded only by the parent loop after explicit operator confirmation
 - update the configured execution-guidance source only if this slice uncovered
   a durable rule that applies to all remaining slices; the threshold is whether
   the guidance would still be relevant five slices from now
@@ -55,7 +58,10 @@ Rules:
 - identify concrete gaps explicitly — do not paper over them
 - do not duplicate what already exists — reference it
 - no implementation code
-- update pipeline with this slice marked complete and next slice recommended
+- append findings, handoff context, and next-slice recommendation to the
+  appropriate artifact when needed, but do not mark the slice complete in the
+  backlog; slice completion is recorded only by the parent loop after explicit
+  operator confirmation
 - if the review produces durable guidance for future slices, add it to
   execution-guidance; if it is operational context for the immediate next
   slice only, add it to pipeline handoff notes
@@ -68,4 +74,6 @@ Output artifact(s) produced | Flags | Next recommended slice
 In either case:
 - if required guidance is missing, conflicting, or ambiguous, flag it explicitly
   before proceeding
+- document what happened in the correct artifact when needed, even if the slice
+  fails or times out, but leave backlog completion state to the parent loop
 - stop immediately after completing the slice

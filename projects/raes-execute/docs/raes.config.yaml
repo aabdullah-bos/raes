@@ -13,3 +13,5 @@ sources:
 
 provider:
   name: openai
+  openai:
+    transport: app_server

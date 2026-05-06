@@ -1,5 +1,7 @@
 import type { ProviderProgressEvent } from './provider.ts';
 
+export type ProgressVerbosity = 'quiet' | 'progress' | 'debug';
+
 interface RenderIO {
   out: (line: string) => void;
   err: (line: string) => void;
@@ -8,6 +10,8 @@ interface RenderIO {
 interface PendingCommandEvent {
   text: string;
   command?: string;
+  status?: string;
+  exitCode?: number;
   deltas: string[];
 }
 
@@ -33,6 +37,8 @@ function formatFile(file: Record<string, unknown>): string | undefined {
     ? file['status']
     : typeof file['change'] === 'string'
       ? file['change']
+      : typeof file['kind'] === 'string'
+        ? file['kind']
       : undefined;
   return status ? `${path} (${status})` : path;
 }
@@ -55,7 +61,38 @@ export interface ProgressRenderer {
   flush(): void;
 }
 
-export function createProgressRenderer(io: RenderIO): ProgressRenderer {
+function shouldSuppressEvent(event: ProviderProgressEvent, verbosity: ProgressVerbosity): boolean {
+  if (verbosity === 'quiet') {
+    return true;
+  }
+
+  if (verbosity === 'debug') {
+    return false;
+  }
+
+  if (event.kind === 'warning' && event.text.startsWith('raw ')) {
+    return true;
+  }
+
+  if (event.eventType === 'item/started' || event.eventType === 'item/completed') {
+    const kind = event.item?.kind;
+    if (kind === 'user_message' || kind === 'agent_message' || kind === 'reasoning') {
+      return true;
+    }
+  }
+
+  if (event.eventType === 'item/agentMessage/delta' && event.text === 'Agent message delta received') {
+    return true;
+  }
+
+  if (event.phase === 'unknown' && event.eventType !== 'mcpServer/startupStatus/updated') {
+    return true;
+  }
+
+  return false;
+}
+
+export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosity = 'progress'): ProgressRenderer {
   let pendingCommand: PendingCommandEvent | undefined;
 
   function flushPendingCommand(): void {
@@ -63,6 +100,12 @@ export function createProgressRenderer(io: RenderIO): ProgressRenderer {
     io.out(`[tool] ${pendingCommand.text}`);
     if (pendingCommand.command) {
       io.out(`  command: ${pendingCommand.command}`);
+    }
+    if (pendingCommand.status) {
+      io.out(`  status: ${pendingCommand.status}`);
+    }
+    if (pendingCommand.exitCode !== undefined) {
+      io.out(`  exit: ${pendingCommand.exitCode}`);
     }
     if (pendingCommand.deltas.length > 0) {
       const visible = pendingCommand.deltas.slice(0, 3);
@@ -85,6 +128,10 @@ export function createProgressRenderer(io: RenderIO): ProgressRenderer {
 
   return {
     push(event: ProviderProgressEvent): void {
+      if (shouldSuppressEvent(event, verbosity)) {
+        return;
+      }
+
       const isCommandDelta = event.phase === 'command' && (event.command || event.delta || event.kind === 'tool');
 
       if (isCommandDelta) {
@@ -97,9 +144,13 @@ export function createProgressRenderer(io: RenderIO): ProgressRenderer {
           pendingCommand = {
             text: event.text,
             command: event.command,
+            status: event.item?.status,
+            exitCode: event.item?.exitCode,
             deltas: [],
           };
         }
+        pendingCommand!.status = event.item?.status ?? pendingCommand!.status;
+        pendingCommand!.exitCode = event.item?.exitCode ?? pendingCommand!.exitCode;
         if (event.delta) {
           pendingCommand!.deltas.push(event.delta);
         } else if (pendingCommand!.deltas.length === 0) {
@@ -122,6 +173,14 @@ export function createProgressRenderer(io: RenderIO): ProgressRenderer {
         for (const file of event.files) {
           const summary = formatFile(file);
           write(summary ? `[diff] ${summary}` : '[diff] Diff updated', event.kind === 'warning');
+        }
+        return;
+      }
+
+      if (event.item?.kind === 'file_change' && event.files && event.files.length > 0) {
+        for (const file of event.files) {
+          const summary = formatFile(file);
+          write(summary ? `[diff] ${summary}` : '[diff] File change updated', event.kind === 'warning');
         }
         return;
       }

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { rmSync, readFileSync } from 'node:fs';
 import { main } from '../src/cli.ts';
-import type { Provider } from '../src/provider.ts';
+import type { Provider, ProviderHooks, ProviderProgressEvent } from '../src/provider.ts';
 import { getPromptPath } from '../src/prompt.ts';
 
 const ALL_ARTIFACT_PATHS = [
@@ -54,6 +54,26 @@ function testProvider(output = 'agent output'): Provider {
       close: async () => {},
     }),
     submit: async () => ({ output }),
+  };
+}
+
+function testProviderWithProgress(progress: ProviderProgressEvent[], output = 'agent output'): Provider {
+  return {
+    startSession: async () => ({
+      submitTurn: async (_prompt: string, hooks?: ProviderHooks) => {
+        for (const event of progress) {
+          hooks?.onProgress?.(event);
+        }
+        return { output };
+      },
+      close: async () => {},
+    }),
+    submit: async (_prompt: string, hooks?: ProviderHooks) => {
+      for (const event of progress) {
+        hooks?.onProgress?.(event);
+      }
+      return { output };
+    },
   };
 }
 
@@ -133,6 +153,22 @@ test('help output lists known options', async () => {
   const full = lines.join('\n');
   assert.ok(full.includes('--help'), 'expected --help in output');
   assert.ok(full.includes('--version'), 'expected --version in output');
+  assert.ok(full.includes('--verbosity'), 'expected --verbosity in output');
+});
+
+test('--verbosity without value exits 1 with usage message', async () => {
+  const lines: string[] = [];
+  const { exitCode } = await main(['--verbosity'], { err: (l) => lines.push(l) });
+  assert.equal(exitCode, 1);
+  assert.ok(lines.some((l) => l.includes('--verbosity requires a value')));
+});
+
+test('--verbosity rejects unknown values', async () => {
+  const lines: string[] = [];
+  const { exitCode } = await main(['--verbosity', 'loud'], { err: (l) => lines.push(l) });
+  assert.equal(exitCode, 1);
+  assert.ok(lines.some((l) => l.includes("invalid value for --verbosity")));
+  assert.ok(lines.some((l) => l.includes('quiet | progress | debug')));
 });
 
 // ---------------------------------------------------------------------------
@@ -821,6 +857,52 @@ test('--execute-next-slice shows "Review Loop" for a review-type slice', async (
       loadPrompt: () => 'prompt text',
     });
     assert.ok(out.join('\n').includes('Review Loop'), 'expected Review Loop in output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice default verbosity suppresses raw warning events', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const out: string[] = [];
+    const err: string[] = [];
+    await main(['--execute-next-slice'], {
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      in: async () => 'n',
+      cwd: dir,
+      provider: testProviderWithProgress([
+        { kind: 'warning', text: 'raw turn/started: {}', eventType: 'turn/started', phase: 'unknown' },
+        { kind: 'status', text: 'Session started', eventType: 'thread/started', phase: 'turn' },
+      ]),
+      loadPrompt: () => 'prompt text',
+    });
+    assert.ok(out.includes('[status] Session started'));
+    assert.deepEqual(err, []);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--execute-next-slice --verbosity debug shows raw warning events', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  try {
+    const out: string[] = [];
+    const err: string[] = [];
+    await main(['--execute-next-slice', '--verbosity', 'debug'], {
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      in: async () => 'n',
+      cwd: dir,
+      provider: testProviderWithProgress([
+        { kind: 'warning', text: 'raw turn/started: {}', eventType: 'turn/started', phase: 'unknown' },
+        { kind: 'status', text: 'Session started', eventType: 'thread/started', phase: 'turn' },
+      ]),
+      loadPrompt: () => 'prompt text',
+    });
+    assert.ok(out.includes('[status] Session started'));
+    assert.ok(err.includes('[warning] raw turn/started: {}'));
   } finally {
     rmSync(dir, { recursive: true });
   }

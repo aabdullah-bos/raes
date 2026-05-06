@@ -265,7 +265,7 @@
   - `raes-execute --check-config` passes
 
 
-- [ ] Slice B3: Reconstruct `execution-guidance.md` from `raes-reference.md` and staged content
+- [x] Slice B3: Reconstruct `execution-guidance.md` from `raes-reference.md` and staged content
 
   **Loop:** Execution Loop
   **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),

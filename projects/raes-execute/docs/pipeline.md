@@ -264,7 +264,6 @@
     other artifact
   - `raes-execute --check-config` passes
 
-
 - [x] Slice B3: Reconstruct `execution-guidance.md` from `raes-reference.md` and staged content
 
   **Loop:** Execution Loop
@@ -371,12 +370,142 @@
   - `raes-execute --execute-next-slice --dry-run` reports no boundary violations
   - No content from the B1 displaced content staging file remains anywhere
 
-- [ ] Slice 13t: Review Slice Nothing to
-  - There is nothing to do for this slice
-  - No tests should be created and no slices should be created
-  - This is a test of intermediate outpu
+- [x] Slice 13g: Review Slice — Define the codex app-server integration contract for raes-execute.
+  -  Read the current `src/provider.ts`, `src/execution-loop.ts`, and `src/review-loop.ts`.
+  -  Read the Codex app-server protocol references recorded in `decisions.md`.
+  - Identify the exact mismatch between the current one-shot `submit(prompt)` provider contract and the long-lived app-server protocol.
+  - Produce an implementation contract covering:
+    - process lifecycle ownership
+    - request/response boundaries
+    - notification handling
+    - final result extraction
+    - failure handling
+    - shutdown behavior
+  - Flag any protocol ambiguity explicitly before implementation.
+  - No code changes in this slice.
+  - No tests required for this slice.
 
-- [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
+- [ ] Slice 13h: Extend provider config schema for OpenAI app-server mode.
+  - Add config support for selecting the OpenAI transport mode under `provider`, for example `provider.openai.transport: exec | app_server`, while preserving current config compatibility.
+  - Keep `exec` as the default unless a durable decision is recorded to change the default.
+  - Validate the new config fields and emit actionable fix strings on invalid values.
+  - Update the project config fixture/docs if needed so `--check-config` still passes.
+  - Tests:
+    - valid config with implicit default transport
+    - valid config with explicit `app_server`
+    - invalid transport value returns config error with fix string
+    - existing configs without the new field remain valid
+
+- [ ] Slice 13i: Introduce a session-capable provider abstraction without breaking Claude or existing Codex exec mode.
+  - Refactor the provider layer so OpenAI can support a long-lived app-server session while Claude and current Codex exec mode continue to work.
+  - Define the minimal new abstractions needed for:
+    - session startup
+    - turn submission
+    - streaming normalized progress events
+    - final result delivery
+    - session shutdown
+  - Keep the existing loop call sites as stable as possible.
+  - Do not implement app-server transport in this slice; establish types and wiring only.
+  - Tests:
+    - existing one-shot provider paths still pass
+    - new abstraction supports progress callbacks without transport-specific behavior
+    - factory/types remain compatible with Claude provider
+
+- [ ] Slice 13j: Implement Codex app-server stdio transport and JSON-RPC client.
+  - Spawn `codex app-server --listen stdio://` as a subprocess.
+  - Implement JSON-RPC client behavior for:
+    - request id generation
+    - request/response correlation
+    - notification routing
+    - stderr capture
+    - subprocess close/error handling
+    - clean shutdown
+  - Keep transport logic isolated from loop rendering and RAES-specific output formatting.
+  - No execution/review loop integration in this slice.
+  - Tests:
+    - mocked stdio startup handshake
+    - request/response correlation
+    - notification receipt
+    - malformed payload handling
+    - subprocess termination before clean shutdown
+
+- [ ] Slice 13k: Implement Codex app-server event normalization into RAES provider progress events.
+  - Parse app-server notifications and normalize them into a stable RAES event model.
+  - Support at minimum:
+    - `turn/started`
+    - `turn/completed`
+    - `item/started`
+    - `item/completed`
+    - `item/agentMessage/delta`
+    - `item/reasoning/summaryTextDelta`
+    - `item/commandExecution/outputDelta`
+    - `turn/plan/updated`
+    - `turn/diff/updated`
+  - Preserve enough structured data for operator-facing rendering to distinguish command execution, agent messages, reasoning summaries, plan updates, and diff updates.
+  - Do not finalize terminal formatting in this slice.
+  - Tests:
+    - event fixtures for each supported notification type
+    - normalized outputs match expected RAES progress events
+    - unsupported notifications degrade safely without failing the turn
+
+- [ ] Slice 13l: Add rich operator progress rendering for execution and review loops.
+  - Update `src/execution-loop.ts` and `src/review-loop.ts` to render normalized streaming events from the provider.
+  - Show more than coarse lifecycle labels by surfacing:
+    - current action
+    - command being run
+    - selected command output snippets
+    - plan updates
+    - file or diff summaries where available
+  - Add output coalescing or truncation rules so the terminal remains readable during long turns.
+  - Preserve the existing confirmation gate after final agent output is complete.
+  - Tests:
+    - execution loop prints intermediate progress before final output
+    - review loop prints intermediate progress before final output
+    - noisy delta streams are coalesced or truncated predictably
+    - final confirmation prompt still appears after the full agent result
+
+- [ ] Slice 13m: Wire OpenAI provider selection to choose app-server transport when configured.
+  - Update provider factory logic so OpenAI selects `exec` or `app_server` based on config.
+  - Preserve current authentication expectations and sandbox-related behavior.
+  - Keep `exec` mode working as a fallback path during rollout.
+  - Ensure provider errors remain actionable and distinguish:
+    - transport startup failure
+    - protocol failure
+    - agent execution failure
+    - authentication failure
+  - Tests:
+    - factory selects `exec` when configured or by default
+    - factory selects `app_server` when configured
+    - OpenAI provider error paths remain structured and actionable
+    - existing Claude factory behavior is unchanged
+
+- [ ] Slice 13n: Add failure-recovery behavior for Codex app-server execution.
+  - Define and implement recovery or failure behavior for:
+    - startup failure
+    - JSON-RPC timeout or no response
+    - incomplete turn
+    - malformed notification
+    - subprocess termination mid-turn
+  - Ensure operator output clearly distinguishes transport failure from agent failure.
+  - Keep artifact write behavior unchanged: no slice is recorded on provider failure.
+  - Tests:
+    - each failure mode returns a structured provider error
+    - loop exits with error without writing pipeline changes
+    - fix guidance is present where recovery action is known
+
+- [ ] Slice 13o: Review Slice — Validate that app-server integration improves operator observability without regressing slice execution behavior.
+  - Compare the original `codex exec` operator feedback against the new app-server path.
+  - Verify that execution and review slices still preserve:
+    - artifact boundary checks
+    - provider output before confirmation
+    - explicit operator confirmation before recording completion
+    - no writes on provider failure
+  - Identify any regressions in readability, noise level, or failure handling.
+  - If durable guidance emerges for event rendering, add it to execution guidance; if the findings are only relevant to the immediate next slice, record them as handoff notes instead.
+  - No implementation code in this slice.
+  - No new slices required unless the review finds concrete gaps.
+
+- [ ] Slice 13g-1: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
     on PATH before or during subprocess spawn, and return a structured
     ProviderResult error with an actionable fix string.
@@ -388,7 +517,7 @@
   - Tests: mock spawn failure / ENOENT for both providers; assert fix guidance
     and no artifact write in CLI-path execution.
 
-- [ ] Slice 13h: Add clearer provider/preflight output.
+- [ ] Slice 13h-1: Add clearer provider/preflight output.
   - Before provider submission in execution-loop.ts and review-loop.ts, print a
     concise preflight block showing slice label, loop type, provider name,
     pipeline path, prompt source, and provider write-access mode.
@@ -400,7 +529,7 @@
   - Tests: assert preflight output ordering and class-specific stderr messages
     for representative provider failures.
 
-- [ ] Slice 13i: Add empty-output guard before slice recording.
+- [ ] Slice 13i-1: Add empty-output guard before slice recording.
   - If provider submission returns success but the final output is empty or
     whitespace-only, treat that as an ambiguity/runtime failure rather than
     prompting to record completion.
@@ -429,6 +558,48 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13g — 2026-05-06
+
+**Review completed.** This was a Review Slice only. No implementation files changed and no tests were added or run.
+
+**Artifacts inspected:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/config.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/slice-preflight.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/provider.test.ts`
+
+**Current-state to build-intent comparison:** The current provider layer satisfies the existing one-shot execution goal: load prompt, submit one full turn, stream coarse progress, print final output, then require explicit operator confirmation before recording completion. That still aligns with the current build intent and single-slice invariants.
+
+**Exact contract mismatch identified:** `src/provider.ts` exposes `submit(prompt, hooks?) -> Promise<ProviderResult>` and each provider owns a single subprocess per turn. The OpenAI app-server protocol is sessioned and bidirectional. It requires process startup independent of any one turn, request/response correlation across JSON-RPC messages, asynchronous notifications during a turn, explicit final-turn completion detection, and graceful shutdown after the session lifecycle ends. The current loop call sites only understand a terminal `output` string plus coarse progress callbacks, so they cannot own or reason about session startup, shutdown, transport failure, or turn-level protocol state.
+
+**Implementation contract for follow-on slices:**
+- Process lifecycle ownership: the OpenAI app-server transport must own subprocess startup, stdio wiring, JSON-RPC framing, and clean shutdown. Execution/review loops must not manage raw child-process lifecycle directly.
+- Request/response boundaries: session startup and session shutdown are separate provider concerns. A slice execution/review turn must be a distinct provider operation within an already-started session, not equivalent to process spawn.
+- Notification handling: app-server notifications must be consumed continuously during an active turn and normalized before they reach loop rendering. Loops should consume normalized RAES progress events, not raw protocol payloads.
+- Final result extraction: completion must be driven by the authoritative turn-completed protocol event, with final operator-visible text extracted from that completed turn state rather than inferred from subprocess close alone.
+- Failure handling: transport startup failure, protocol failure, agent execution failure, authentication failure, and premature subprocess termination must remain distinct error classes with actionable fixes where known. No artifact write may occur for any provider/session failure.
+- Shutdown behavior: the provider must attempt orderly session termination after a completed or failed turn and must tolerate already-dead subprocesses during cleanup without masking the original failure.
+
+**Gaps (explicit):**
+- The current `Provider` interface has no place to represent session startup, session shutdown, or multiple turns over one process.
+- `ProviderProgressEvent` is too coarse for the events named in the recorded app-server decision (`turn`, `item`, command output, plan update, diff update).
+- `runExecutionLoop()` and `runReviewLoop()` assume provider completion is equivalent to one resolved promise and do not model session cleanup or transport-level failure states separately from agent output failure.
+- `CodexProvider` currently treats subprocess close as the end of the interaction and parses `codex exec --json` JSONL only; it has no JSON-RPC transport boundary.
+
+**Flags:**
+- No blocking conflict was found between build intent, system constraints, execution guidance, and the recorded app-server decision.
+- Protocol ambiguity remains open until implementation references are consulted during transport work: this review did not inspect the external app-server documents directly, so exact JSON-RPC method names, startup handshake details, and shutdown message shape must be confirmed in Slice 13j before transport code is written.
+
+**Next operator:** Slice 13h is the next recommended slice. Extend provider config schema for OpenAI transport selection while preserving current `exec` behavior as the default/fallback, then proceed to Slice 13i to introduce the session-capable abstraction required by this contract before implementing the app-server transport.
 
 ### Slice B1 — 2026-05-06
 

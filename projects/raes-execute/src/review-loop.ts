@@ -6,7 +6,7 @@ import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { markSliceComplete } from './execution-loop.ts';
 import { loadPrompt } from './prompt.ts';
-import { createProvider, type Provider } from './provider.ts';
+import { createProvider, type Provider, type ProviderProgressEvent } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
 export interface ReviewLoopResult {
@@ -33,6 +33,18 @@ function defaultIn(): Promise<string | null> {
   });
 }
 
+function renderProgress(
+  event: ProviderProgressEvent,
+  io: { out: (line: string) => void; err: (line: string) => void },
+): void {
+  const line = event.kind === 'tool' ? `[tool] ${event.text}` : `[agent] ${event.text}`;
+  if (event.kind === 'warning') {
+    io.err(line);
+    return;
+  }
+  io.out(line);
+}
+
 export async function runReviewLoop(
   slice: Slice,
   config: RaesConfig,
@@ -56,9 +68,12 @@ export async function runReviewLoop(
   const prompt = preflight.prompt;
 
   out(`Boundaries:  ok`);
+  out(`Provider:    started; waiting for progress...`);
   out('');
 
-  const result = await provider.submit(prompt);
+  const result = await provider.submit(prompt, {
+    onProgress: (event) => renderProgress(event, { out, err }),
+  });
   if (result.error) {
     err(`error: ${result.error}`);
     if (result.fix) {

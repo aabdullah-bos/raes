@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { readFileSync, rmSync } from 'node:fs';
 import { markSliceComplete } from '../src/execution-loop.ts';
 import { runExecutionLoop } from '../src/execution-loop.ts';
-import type { Provider } from '../src/provider.ts';
+import type { Provider, ProviderHooks, ProviderProgressEvent } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 
 const PIPELINE_TWO_SLICES = `
@@ -45,11 +45,18 @@ test('markSliceComplete: returns null when label not found in content', () => {
   assert.equal(result, null, 'expected null when label is not found');
 });
 
-test('markSliceComplete: does not match a checked slice with the same label', () => {
+test('markSliceComplete: returns content unchanged when slice already complete', () => {
   const content = `\n## Slice Backlog\n\n- [x] Slice 1: Already done\n`;
   const slice = { position: 1, label: 'Slice 1: Already done', complete: true };
   const result = markSliceComplete(content, slice);
-  assert.equal(result, null, 'should not match a checked slice');
+  assert.equal(result, content, 'should return unchanged content for already-complete slice');
+});
+
+test('markSliceComplete: returns null when label absent entirely', () => {
+  const content = `\n## Slice Backlog\n\n- [x] Slice 1: Already done\n`;
+  const slice = { position: 2, label: 'Slice 2: Not in file', complete: false };
+  const result = markSliceComplete(content, slice);
+  assert.equal(result, null);
 });
 
 test('markSliceComplete: only replaces the first unchecked occurrence', () => {
@@ -94,7 +101,22 @@ async function makeProject(pipelineContent = VALID_ARTIFACTS['docs/pipeline.md']
 
 function providerReturning(result: { output: string; error?: string; fix?: string }): Provider {
   return {
-    submit: async () => result,
+    submit: async (_prompt: string, hooks?: ProviderHooks) => {
+      hooks?.onProgress?.({ kind: 'status', text: 'Reading artifacts' });
+      hooks?.onProgress?.({ kind: 'tool', text: 'Read' });
+      return result;
+    },
+  };
+}
+
+function providerWithProgress(progress: ProviderProgressEvent[], result: { output: string; error?: string; fix?: string }): Provider {
+  return {
+    submit: async (_prompt: string, hooks?: ProviderHooks) => {
+      for (const event of progress) {
+        hooks?.onProgress?.(event);
+      }
+      return result;
+    },
   };
 }
 
@@ -122,6 +144,44 @@ test('runExecutionLoop: prints provider output before confirmation prompt', asyn
     assert.ok(outputIndex >= 0, 'expected provider output to be printed');
     assert.ok(promptIndex >= 0, 'expected confirmation prompt to be printed');
     assert.ok(outputIndex < promptIndex, 'expected provider output before confirmation prompt');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('runExecutionLoop: prints intermediate provider progress before final output', async () => {
+  const dir = await makeProject();
+  try {
+    const out: string[] = [];
+    const result = await runExecutionLoop(
+      { position: 1, label: 'Slice 1: Run execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        in: async () => 'n',
+      },
+      {
+        provider: providerWithProgress(
+          [
+            { kind: 'status', text: 'Reading artifacts' },
+            { kind: 'tool', text: 'Read' },
+          ],
+          { output: 'agent output line' },
+        ),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    const providerStartIndex = out.indexOf('Provider:    started; waiting for progress...');
+    const progressIndex = out.indexOf('[agent] Reading artifacts');
+    const toolIndex = out.indexOf('[tool] Read');
+    const outputIndex = out.indexOf('agent output line');
+    assert.ok(providerStartIndex >= 0);
+    assert.ok(progressIndex > providerStartIndex, 'expected status after provider start');
+    assert.ok(toolIndex > progressIndex, 'expected tool event after status event');
+    assert.ok(outputIndex > toolIndex, 'expected final output after progress events');
   } finally {
     rmSync(dir, { recursive: true });
   }

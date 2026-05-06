@@ -12,4 +12,4 @@ sources:
   validation: docs/validation.md
 
 provider:
-  name: anthropic
+  name: openai

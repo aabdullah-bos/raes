@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readFileSync, rmSync } from 'node:fs';
 import { runReviewLoop } from '../src/review-loop.ts';
-import type { Provider } from '../src/provider.ts';
+import type { Provider, ProviderHooks, ProviderProgressEvent } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 
 const VALID_CONFIG: RaesConfig = {
@@ -41,7 +41,22 @@ async function makeProject(pipelineContent = VALID_ARTIFACTS['docs/pipeline.md']
 
 function providerReturning(result: { output: string; error?: string; fix?: string }): Provider {
   return {
-    submit: async () => result,
+    submit: async (_prompt: string, hooks?: ProviderHooks) => {
+      hooks?.onProgress?.({ kind: 'status', text: 'Reviewing artifacts' });
+      hooks?.onProgress?.({ kind: 'tool', text: 'Read' });
+      return result;
+    },
+  };
+}
+
+function providerWithProgress(progress: ProviderProgressEvent[], result: { output: string; error?: string; fix?: string }): Provider {
+  return {
+    submit: async (_prompt: string, hooks?: ProviderHooks) => {
+      for (const event of progress) {
+        hooks?.onProgress?.(event);
+      }
+      return result;
+    },
   };
 }
 
@@ -69,6 +84,44 @@ test('runReviewLoop: prints provider output before confirmation prompt', async (
     assert.ok(outputIndex >= 0, 'expected provider output to be printed');
     assert.ok(promptIndex >= 0, 'expected confirmation prompt to be printed');
     assert.ok(outputIndex < promptIndex, 'expected provider output before confirmation prompt');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('runReviewLoop: prints intermediate provider progress before final output', async () => {
+  const dir = await makeProject();
+  try {
+    const out: string[] = [];
+    const result = await runReviewLoop(
+      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        in: async () => 'n',
+      },
+      {
+        provider: providerWithProgress(
+          [
+            { kind: 'status', text: 'Reviewing artifacts' },
+            { kind: 'tool', text: 'Read' },
+          ],
+          { output: 'review output line' },
+        ),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    const providerStartIndex = out.indexOf('Provider:    started; waiting for progress...');
+    const progressIndex = out.indexOf('[agent] Reviewing artifacts');
+    const toolIndex = out.indexOf('[tool] Read');
+    const outputIndex = out.indexOf('review output line');
+    assert.ok(providerStartIndex >= 0);
+    assert.ok(progressIndex > providerStartIndex, 'expected status after provider start');
+    assert.ok(toolIndex > progressIndex, 'expected tool event after status event');
+    assert.ok(outputIndex > toolIndex, 'expected final output after progress events');
   } finally {
     rmSync(dir, { recursive: true });
   }

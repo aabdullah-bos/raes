@@ -331,7 +331,7 @@
   - `raes-execute --check-config` passes
 
 
-- [ ] Slice B4: Verify boundary compliance across all artifacts
+- [x] Slice B4: Verify boundary compliance across all artifacts
 
   **Loop:** Review Loop
   **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),
@@ -370,6 +370,11 @@
   - `raes-execute --check-config` passes
   - `raes-execute --execute-next-slice --dry-run` reports no boundary violations
   - No content from the B1 displaced content staging file remains anywhere
+
+- [ ] Slice 13t: Review Slice Nothing to
+  - There is nothing to do for this slice
+  - No tests should be created and no slices should be created
+  - This is a test of intermediate outpu
 
 - [ ] Slice 13g: Add missing-binary handling for provider subprocesses.
   - Detect the case where `claude` or `codex` is not installed or not present
@@ -513,6 +518,20 @@
 **Validation:** `npm test` and `npm run typecheck` both pass from `projects/raes-execute/`. Test count is now 206 passing.
 
 **Next operator:** Slice 13g is next. It can build on the explicit project-root plumbing already in place and should keep using the resolved target project root rather than the invocation cwd when surfacing provider runtime failures.
+
+### Slice 13t — 2026-05-06
+
+**Review completed.** The first unchecked slice was a Review Slice with no implementation work, tests, or new slices required. Current state was inspected against the configured build intent, system constraints, durable decisions, execution guidance, and validation guidance before recording completion.
+
+**Findings:** The current CLI already loads the configured provider, runs slice preflight, and routes execution/review slices through provider-backed loops. This remains aligned with the build intent for disciplined single-slice execution and the existing provider integration slices already completed.
+
+**Gaps (explicit):**
+- `src/provider.ts` does not yet distinguish missing `claude` / `codex` binaries on PATH from other subprocess failures; there is no `ENOENT`-specific handling or operator fix guidance for that case.
+- The next backlog slice (`Slice 13g`) directly covers that gap and is still the correct next slice to execute.
+
+**Artifacts produced:** `docs/pipeline.md` updated to mark this review slice complete and record handoff only. No implementation files changed.
+
+**Next operator:** Execute Slice 13g next. Keep the change scoped to provider missing-binary detection, loop surfacing, and tests only.
 
 ### Slice 13f-compat — 2026-05-05
 

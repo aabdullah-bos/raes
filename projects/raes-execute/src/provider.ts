@@ -7,8 +7,17 @@ export interface ProviderResult {
   fix?: string;
 }
 
+export interface ProviderProgressEvent {
+  kind: 'status' | 'message' | 'tool' | 'warning';
+  text: string;
+}
+
+export interface ProviderHooks {
+  onProgress?: (event: ProviderProgressEvent) => void;
+}
+
 export interface Provider {
-  submit(prompt: string): Promise<ProviderResult>;
+  submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult>;
 }
 
 export type SpawnFn = (
@@ -49,6 +58,14 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function extractCodexCompletedText(event: Record<string, unknown>): string {
   const direct =
     readString(event['output_text']) ??
@@ -69,36 +86,228 @@ function extractCodexCompletedText(event: Record<string, unknown>): string {
   return '';
 }
 
-function extractCodexResult(stdout: string): ProviderResult {
-  const lines = stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+function emitProgress(hooks: ProviderHooks | undefined, event: ProviderProgressEvent): void {
+  hooks?.onProgress?.(event);
+}
 
-  for (const line of lines) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      return {
-        output: '',
-        error: `failed to parse codex output as JSONL: ${line.slice(0, 200)}`,
-      };
-    }
+function parseJsonlChunk(
+  chunk: string,
+  buffer: string,
+  onLine: (line: string) => ProviderResult | void,
+): { buffer: string; result?: ProviderResult } {
+  const combined = buffer + chunk;
+  const lines = combined.split('\n');
+  const nextBuffer = lines.pop() ?? '';
 
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      (parsed as Record<string, unknown>)['type'] === 'turn/completed'
-    ) {
-      return { output: extractCodexCompletedText(parsed as Record<string, unknown>) };
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (line.length === 0) continue;
+    const result = onLine(line);
+    if (result) {
+      return { buffer: nextBuffer, result };
     }
   }
 
-  return {
-    output: '',
-    error: 'codex output did not include a turn/completed event',
-  };
+  return { buffer: nextBuffer };
+}
+
+function parseTrailingJsonlBuffer(
+  buffer: string,
+  onLine: (line: string) => ProviderResult | void,
+): ProviderResult | undefined {
+  const line = buffer.trim();
+  if (line.length === 0) return undefined;
+  const result = onLine(line);
+  return result === undefined ? undefined : result;
+}
+
+function readEventType(event: Record<string, unknown>): string | undefined {
+  return readString(event['type']) ?? readString(event['event']);
+}
+
+function isCodexCompletedEvent(type: string | undefined): boolean {
+  return type === 'turn/completed' || type === 'turn.completed';
+}
+
+function normalizeEventType(type: string | undefined): string | undefined {
+  return type?.replace(/\//g, '.');
+}
+
+function summarizeCodexItemKind(item: Record<string, unknown> | undefined): string | undefined {
+  if (!item) return undefined;
+  return (
+    readNonEmptyString(item['kind']) ??
+    readNonEmptyString(item['type']) ??
+    readNonEmptyString(item['item_type']) ??
+    readNonEmptyString(item['role'])
+  );
+}
+
+function summarizeCodexEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {
+  const rawType = readEventType(event);
+  const type = normalizeEventType(rawType);
+  if (!type || isCodexCompletedEvent(rawType)) return undefined;
+
+  const toolName =
+    readNonEmptyString(event['tool_name']) ??
+    readNonEmptyString(event['tool']) ??
+    readNonEmptyString(event['name']) ??
+    readNonEmptyString(readRecord(event['tool_call'])?.['name']) ??
+    readNonEmptyString(readRecord(event['item'])?.['name']) ??
+    readNonEmptyString(readRecord(event['item'])?.['tool_name']);
+  if (toolName) {
+    return { kind: 'tool', text: toolName };
+  }
+
+  switch (type) {
+    case 'thread.started':
+      return { kind: 'status', text: 'Session started' };
+    case 'turn.started':
+      return { kind: 'status', text: 'Agent turn started' };
+    case 'turn.waiting':
+      return { kind: 'status', text: 'Agent is waiting for tool results' };
+    case 'turn.completed':
+      return { kind: 'status', text: 'Agent turn completed' };
+    case 'item.started': {
+      const itemKind = summarizeCodexItemKind(readRecord(event['item']));
+      if (itemKind) {
+        return { kind: 'status', text: `${itemKind} started` };
+      }
+      return { kind: 'status', text: 'Work item started' };
+    }
+    case 'item.completed': {
+      const itemKind = summarizeCodexItemKind(readRecord(event['item']));
+      if (itemKind) {
+        return { kind: 'status', text: `${itemKind} completed` };
+      }
+      return { kind: 'status', text: 'Work item completed' };
+    }
+    case 'error':
+      return {
+        kind: 'warning',
+        text: readNonEmptyString(event['message']) ?? 'Provider reported an error event',
+      };
+    default:
+      if (type.startsWith('message.')) {
+        return { kind: 'status', text: 'Agent is generating output' };
+      }
+      if (type.startsWith('tool_call') || type.startsWith('tool.')) {
+        return { kind: 'status', text: `Running ${type}` };
+      }
+      return { kind: 'status', text: `Observed ${type}` };
+  }
+}
+
+function summarizeClaudeEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {
+  const type = readString(event['type']);
+  if (!type) return undefined;
+
+  const toolName =
+    readNonEmptyString(event['tool_name']) ??
+    readNonEmptyString(event['tool']) ??
+    readNonEmptyString(event['name']) ??
+    readNonEmptyString(readRecord(event['tool_use'])?.['name']);
+  if (toolName) {
+    return { kind: 'tool', text: toolName };
+  }
+
+  switch (type) {
+    case 'result':
+      return undefined;
+    case 'message_start':
+      return { kind: 'status', text: 'Agent response started' };
+    case 'message_delta':
+    case 'content_block_delta':
+      return { kind: 'status', text: 'Agent is generating output' };
+    case 'content_block_start':
+      return { kind: 'status', text: 'Agent started a new content block' };
+    case 'content_block_stop':
+    case 'message_stop':
+      return { kind: 'status', text: 'Agent finished a response segment' };
+    case 'error':
+      return {
+        kind: 'warning',
+        text: readNonEmptyString(event['message']) ?? 'Provider reported an error event',
+      };
+    default:
+      return { kind: 'status', text: `Observed ${type}` };
+  }
+}
+
+function extractClaudeFinalText(event: Record<string, unknown>): string | undefined {
+  return (
+    readNonEmptyString(event['result']) ??
+    readNonEmptyString(event['output_text']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(readRecord(event['message'])?.['text']) ??
+    readNonEmptyString(readRecord(event['delta'])?.['text'])
+  );
+}
+
+function extractCodexResultFromLine(line: string, hooks?: ProviderHooks): ProviderResult | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return {
+      output: '',
+      error: `failed to parse codex output as JSONL: ${line.slice(0, 200)}`,
+    };
+  }
+
+  const event = readRecord(parsed);
+  if (!event) {
+    return {
+      output: '',
+      error: `failed to parse codex output as JSONL: ${line.slice(0, 200)}`,
+    };
+  }
+
+  if (isCodexCompletedEvent(readEventType(event))) {
+    return { output: extractCodexCompletedText(event) };
+  }
+
+  const progress = summarizeCodexEvent(event);
+  if (progress) emitProgress(hooks, progress);
+  return undefined;
+}
+
+function extractClaudeResultFromLine(
+  line: string,
+  hooks: ProviderHooks | undefined,
+  state: { finalOutput: string },
+): ProviderResult | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return {
+      output: '',
+      error: `failed to parse claude output as JSONL: ${line.slice(0, 200)}`,
+    };
+  }
+
+  const event = readRecord(parsed);
+  if (!event) {
+    return {
+      output: '',
+      error: `failed to parse claude output as JSONL: ${line.slice(0, 200)}`,
+    };
+  }
+
+  const progress = summarizeClaudeEvent(event);
+  if (progress) emitProgress(hooks, progress);
+
+  if (event['type'] === 'result') {
+    state.finalOutput = extractClaudeFinalText(event) ?? state.finalOutput;
+    return { output: state.finalOutput };
+  }
+
+  const finalText = extractClaudeFinalText(event);
+  if (finalText) {
+    state.finalOutput = finalText;
+  }
+  return undefined;
 }
 
 export class ClaudeCodeProvider implements Provider {
@@ -110,9 +319,9 @@ export class ClaudeCodeProvider implements Provider {
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   }
 
-  async submit(prompt: string): Promise<ProviderResult> {
+  async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
     const writeAccess = this.config.provider.sandbox?.write_access !== false;
-    const args = ['-p', '--output-format', 'json'];
+    const args = ['-p', '--output-format', 'stream-json'];
     if (writeAccess) {
       args.push('--allowedTools', 'Edit,Write,Read');
     }
@@ -128,10 +337,19 @@ export class ClaudeCodeProvider implements Provider {
         return;
       }
 
-      let stdout = '';
+      let stdoutBuffer = '';
       let stderr = '';
+      const state = { finalOutput: '' };
 
-      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stdout.on('data', (chunk: Buffer) => {
+        const parsed = parseJsonlChunk(chunk.toString(), stdoutBuffer, (line) =>
+          extractClaudeResultFromLine(line, hooks, state),
+        );
+        stdoutBuffer = parsed.buffer;
+        if (parsed.result) {
+          state.finalOutput = parsed.result.output;
+        }
+      });
       child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
       child.stdin.write(prompt);
@@ -155,7 +373,17 @@ export class ClaudeCodeProvider implements Provider {
           return;
         }
 
-        resolve(extractClaudeResult(stdout));
+        const trailing = parseTrailingJsonlBuffer(stdoutBuffer, (line) =>
+          extractClaudeResultFromLine(line, hooks, state),
+        );
+        if (trailing?.error) {
+          resolve(trailing);
+          return;
+        }
+        if (trailing?.output) {
+          state.finalOutput = trailing.output;
+        }
+        resolve({ output: state.finalOutput });
       });
     });
   }
@@ -170,9 +398,9 @@ export class CodexProvider implements Provider {
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   }
 
-  async submit(prompt: string): Promise<ProviderResult> {
+  async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
     const writeAccess = this.config.provider.sandbox?.write_access !== false;
-    const args = ['exec', '-'];
+    const args = ['exec', '--json', '-'];
     if (writeAccess) {
       args.push('--sandbox', 'workspace-write');
     }
@@ -188,10 +416,19 @@ export class CodexProvider implements Provider {
         return;
       }
 
-      let stdout = '';
+      let stdoutBuffer = '';
       let stderr = '';
+      let result: ProviderResult | undefined;
 
-      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stdout.on('data', (chunk: Buffer) => {
+        const parsed = parseJsonlChunk(chunk.toString(), stdoutBuffer, (line) =>
+          extractCodexResultFromLine(line, hooks),
+        );
+        stdoutBuffer = parsed.buffer;
+        if (parsed.result) {
+          result = parsed.result;
+        }
+      });
       child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
       child.stdin.write(prompt);
@@ -215,7 +452,16 @@ export class CodexProvider implements Provider {
           return;
         }
 
-        resolve(extractCodexResult(stdout));
+        const trailing = parseTrailingJsonlBuffer(stdoutBuffer, (line) =>
+          extractCodexResultFromLine(line, hooks),
+        );
+        if (trailing) {
+          result = trailing;
+        }
+        resolve(result ?? {
+          output: '',
+          error: 'codex output did not include a turn/completed event',
+        });
       });
     });
   }

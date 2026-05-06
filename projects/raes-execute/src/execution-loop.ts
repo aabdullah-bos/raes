@@ -5,7 +5,7 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
-import { createProvider, type Provider } from './provider.ts';
+import { createProvider, type Provider, type ProviderProgressEvent } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
 interface LoopIO {
@@ -24,11 +24,15 @@ interface ExecutionLoopDeps {
 }
 
 // Replace the first `- [ ] {label}` occurrence with `- [x] {label}`.
-// Returns null if no matching unchecked slice line is found.
+// Returns null if the label is not found in either checked or unchecked form.
+// Returns content unchanged if the slice is already marked complete (idempotent).
 export function markSliceComplete(content: string, slice: Slice): string | null {
   const target = `- [ ] ${slice.label}`;
-  if (!content.includes(target)) return null;
-  return content.replace(target, `- [x] ${slice.label}`);
+  if (content.includes(target)) {
+    return content.replace(target, `- [x] ${slice.label}`);
+  }
+  if (content.includes(`- [x] ${slice.label}`)) return content;
+  return null;
 }
 
 function defaultIn(): Promise<string | null> {
@@ -44,6 +48,15 @@ function defaultIn(): Promise<string | null> {
       if (!answered) resolve(null);
     });
   });
+}
+
+function renderProgress(event: ProviderProgressEvent, io: Pick<LoopIO, 'out' | 'err'>): void {
+  const line = event.kind === 'tool' ? `[tool] ${event.text}` : `[agent] ${event.text}`;
+  if (event.kind === 'warning') {
+    io.err(line);
+    return;
+  }
+  io.out(line);
 }
 
 export async function runExecutionLoop(
@@ -69,9 +82,12 @@ export async function runExecutionLoop(
   const prompt = preflight.prompt;
 
   out(`Boundaries:  ok`);
+  out(`Provider:    started; waiting for progress...`);
   out('');
 
-  const result = await provider.submit(prompt);
+  const result = await provider.submit(prompt, {
+    onProgress: (event) => renderProgress(event, { out, err }),
+  });
   if (result.error) {
     err(`error: ${result.error}`);
     if (result.fix) {

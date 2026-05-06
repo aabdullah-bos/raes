@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ClaudeCodeProvider, CodexProvider, createProvider } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
-import type { SpawnFn } from '../src/provider.ts';
+import type { ProviderProgressEvent, SpawnFn } from '../src/provider.ts';
 
 function makeConfig(providerName: 'anthropic' | 'openai', writeAccess?: boolean): RaesConfig {
   return {
@@ -136,15 +136,38 @@ test('ClaudeCodeProvider: passes prompt via stdin, not in args', async () => {
 
 test('ClaudeCodeProvider: extracts output from JSON result field', async () => {
   const expectedOutput = 'the agent response text';
-  const mock = makeSpawnMock({ stdoutData: JSON.stringify({ result: expectedOutput }) });
+  const stdoutData = [
+    JSON.stringify({ type: 'message_start' }),
+    JSON.stringify({ type: 'result', result: expectedOutput }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
   const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
   const result = await provider.submit('test prompt');
   assert.equal(result.output, expectedOutput);
   assert.equal(result.error, undefined);
 });
 
+test('ClaudeCodeProvider: emits progress events while parsing stream-json output', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'message_start' }),
+    JSON.stringify({ type: 'content_block_start', tool_name: 'Read' }),
+    JSON.stringify({ type: 'result', result: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [
+    { kind: 'status', text: 'Agent response started' },
+    { kind: 'tool', text: 'Read' },
+  ]);
+});
+
 test('CodexProvider: passes --sandbox workspace-write when write_access is true', async () => {
-  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn/completed', output_text: 'agent-output' })}\n` });
+  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'agent-output' })}\n` });
   const provider = new CodexProvider(makeConfig('openai', true), mock.spawnFn);
   await provider.submit('test prompt');
   assert.equal(mock.capturedCmd, 'codex');
@@ -155,7 +178,7 @@ test('CodexProvider: passes --sandbox workspace-write when write_access is true'
 });
 
 test('CodexProvider: omits --sandbox when write_access is false', async () => {
-  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn/completed', output_text: 'agent-output' })}\n` });
+  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'agent-output' })}\n` });
   const provider = new CodexProvider(makeConfig('openai', false), mock.spawnFn);
   await provider.submit('test prompt');
   assert.ok(!mock.capturedArgs.includes('--sandbox'), 'expected --sandbox to be absent when write_access is false');
@@ -176,7 +199,7 @@ test('CodexProvider: subprocess exits non-zero with auth error output returns Pr
 });
 
 test('CodexProvider: passes prompt via stdin, not in args', async () => {
-  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn/completed', output_text: 'agent-output' })}\n` });
+  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'agent-output' })}\n` });
   const provider = new CodexProvider(makeConfig('openai'), mock.spawnFn);
   const prompt = 'unique-codex-prompt-content-for-stdin-test';
   await provider.submit(prompt);
@@ -190,18 +213,43 @@ test('CodexProvider: passes prompt via stdin, not in args', async () => {
   );
 });
 
-test('CodexProvider: extracts output from JSONL turn/completed event', async () => {
+test('CodexProvider: extracts output from JSONL turn.completed event', async () => {
   const expectedOutput = 'codex final response';
   const stdoutData = [
-    JSON.stringify({ type: 'turn/started', turn_id: 'turn-1' }),
-    JSON.stringify({ type: 'message', role: 'assistant', content: 'partial output ignored here' }),
-    JSON.stringify({ type: 'turn/completed', output_text: expectedOutput }),
+    JSON.stringify({ type: 'turn.started', turn_id: 'turn-1' }),
+    JSON.stringify({ type: 'message.delta', role: 'assistant', content: 'partial output ignored here' }),
+    JSON.stringify({ type: 'turn.completed', output_text: expectedOutput }),
   ].join('\n');
   const mock = makeSpawnMock({ stdoutData });
   const provider = new CodexProvider(makeConfig('openai'), mock.spawnFn);
   const result = await provider.submit('test prompt');
   assert.equal(result.output, expectedOutput);
   assert.equal(result.error, undefined);
+});
+
+test('CodexProvider: emits progress events before turn.completed', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'thread.started' }),
+    JSON.stringify({ type: 'turn.started', turn_id: 'turn-1' }),
+    JSON.stringify({ type: 'item.started', item: { type: 'reasoning' } }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'reasoning' } }),
+    JSON.stringify({ type: 'tool_call.started', tool_name: 'Edit' }),
+    JSON.stringify({ type: 'turn.completed', output_text: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new CodexProvider(makeConfig('openai'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [
+    { kind: 'status', text: 'Session started' },
+    { kind: 'status', text: 'Agent turn started' },
+    { kind: 'status', text: 'reasoning started' },
+    { kind: 'status', text: 'reasoning completed' },
+    { kind: 'tool', text: 'Edit' },
+  ]);
 });
 
 test('createProvider: returns ClaudeCodeProvider for anthropic config', () => {

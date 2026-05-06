@@ -9,14 +9,20 @@ The project is initialized from the PRD `RAES Execute` using the `cli` archetype
 ## Product Invariants
 
 - The tool must behave predictably given the same configuration and state.
-- Configuration validation must complete before any side effects begin.
-- The tool must exit with a non-zero code on any failure.
-- Partial state mutations must be detectable or must not occur.
+- Each CLI invocation executes exactly one bounded slice of work.
+- Artifacts are updated only in their correct roles as defined by RAES reference.
+- The tool does not merge, overwrite, or reinterpret artifact files outside strict RAES rules.
+- Configuration validation must complete before any side effects begin on every invocation.
+- Any ambiguity, missing artifact, or boundary violation halts execution until a human resolves it.
+- The tool must exit with a non-zero code on any failure, and partial state mutations must be detectable or prevented.
 
 ## Drift Guards
 
 - Command parsing, business logic, and I/O are separate layers. Do not conflate them.
 - Configuration is read once at startup and validated before any side effects begin.
+- Before and during execution, the tool validates artifact boundaries and constraint promotion mismatches explicitly.
+- All artifact writes are atomic; temp-file or equivalent transactional patterns are required.
+- Core RAES execution flow cannot be bypassed; every slice runs either the Execution Loop or Review Loop in full.
 - Do not widen the command surface beyond what the current slice requires.
 - One slice per session. Stop after completing the slice.
 - Exit codes are a contract. Do not change them once established without an explicit decision.
@@ -27,14 +33,14 @@ The project is initialized from the PRD `RAES Execute` using the `cli` archetype
 - Exit code assignments must be recorded in `decisions.md` when introduced.
 - External system interactions must go through an explicit adapter or service boundary.
 - State files written or modified by the tool must have an explicit format and write behavior.
+- The configured pipeline artifact is the source of truth for slice order and completion status.
 
 ## Unknowns
 
-- Exact configuration schema and required vs optional keys.
 - Retry and timeout behavior for external calls.
-- How partial failures are surfaced and recovered from.
-- Whether the tool maintains local state between invocations.
-- Logging verbosity and output format.
+- How partial failures are surfaced and recovered from beyond atomic-write failure handling and exit codes.
+- Whether v1 needs separate local state/history files beyond the configured RAES artifacts.
+- Logging verbosity and machine-readable output format for future history/export surfaces.
 
 ## Anti-Patterns
 

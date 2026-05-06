@@ -215,7 +215,7 @@
   - `raes-execute --check-config` passes
 
 
-- [ ] Slice B2: Reconstruct `system.md` from `raes-reference.md` and staged content
+- [x] Slice B2: Reconstruct `system.md` from `raes-reference.md` and staged content
 
   **Loop:** Execution Loop
   **Artifacts read:** `docs/raes-reference.md` (File Boundaries section),
@@ -438,6 +438,22 @@
 **FLAG — Config/source mismatch (open):** `docs/raes.config.yaml` does not declare `docs/raes-reference.md` as an authoritative artifact, but Slice B1 depends on that shared file as the source of truth for pipeline boundaries. This slice proceeded because B1 names `docs/raes-reference.md` explicitly, but future workflow slices should either declare this shared dependency in config or continue to name it explicitly in the backlog.
 
 **Next operator:** Slice B2 is next. Consume `docs/b1-displaced-content.md` before making any further boundary edits, and do not delete it until both B2 and B3 have fully absorbed the staged sections.
+
+### Slice B2 — 2026-05-06
+
+**`system.md` reconstructed from authoritative sources.** `/Users/aquilabdullah/devel/projects/raes/docs/raes-reference.md`, `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/b1-displaced-content.md`, and `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md` were compared section-by-section. The staged `Invariants`, `Known Contracts`, and `Unknowns` content was consumed into `system.md`, keeping the more accurate live-project wording where the staged copy was stale.
+
+**System constraints strengthened, stale contracts discarded.** `system.md` now carries the stronger single-slice, boundary-discipline, atomic-write, and explicit-pipeline-source constraints from the staged content. Two staged contracts were intentionally not promoted because they no longer match the project:
+- slice definitions and milestone structure living in config
+- dedicated local status/history files already existing
+
+**Unknowns narrowed.** The resolved Unknown about the config schema was removed from `system.md` and recorded in `decisions.md`. Remaining Unknowns were narrowed to unresolved runtime behavior and future state/history format questions only.
+
+**Displaced-content handoff updated.** `docs/b1-displaced-content.md` no longer contains any `docs/system.md` destination block. The only remaining staged content is the PRD purpose section, which still needs its owning slice.
+
+**FLAG — shared-source dependency still explicit-in-backlog only (open):** This slice again depended on `/Users/aquilabdullah/devel/projects/raes/docs/raes-reference.md`, which is not declared in `docs/raes.config.yaml`. The backlog names it explicitly, so execution could proceed, but the config/source mismatch from Slice B1 remains unresolved.
+
+**Next operator:** Slice B3 is next. Use the live `raes-reference.md` file as authority, remove the forbidden `## Invariants` section from `execution-guidance.md` only after confirming the content remains covered in `system.md`, and then consume or delete the remaining temporary staged-content file as directed by the B3 slice.
 
 ### Slice 13r-file-rights — 2026-05-06
 

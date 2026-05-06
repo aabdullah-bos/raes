@@ -5,7 +5,8 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
-import { createProvider, type Provider, type ProviderProgressEvent, type ProviderResult } from './provider.ts';
+import { createProgressRenderer } from './progress-renderer.ts';
+import { createProvider, type Provider, type ProviderResult } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
 
 interface LoopIO {
@@ -50,15 +51,6 @@ function defaultIn(): Promise<string | null> {
   });
 }
 
-function renderProgress(event: ProviderProgressEvent, io: Pick<LoopIO, 'out' | 'err'>): void {
-  const line = event.kind === 'tool' ? `[tool] ${event.text}` : `[agent] ${event.text}`;
-  if (event.kind === 'warning') {
-    io.err(line);
-    return;
-  }
-  io.out(line);
-}
-
 export async function runExecutionLoop(
   slice: Slice,
   config: RaesConfig,
@@ -86,12 +78,14 @@ export async function runExecutionLoop(
   out('');
 
   const session = await provider.startSession();
+  const progress = createProgressRenderer({ out, err });
   let result: ProviderResult;
   try {
     result = await session.submitTurn(prompt, {
-      onProgress: (event) => renderProgress(event, { out, err }),
+      onProgress: (event) => progress.push(event),
     });
   } finally {
+    progress.flush();
     await session.close();
   }
   if (result.error) {

@@ -132,13 +132,52 @@ test('runReviewLoop: prints intermediate provider progress before final output',
     );
     assert.equal(result.exitCode, 0);
     const providerStartIndex = out.indexOf('Provider:    started; waiting for progress...');
-    const progressIndex = out.indexOf('[agent] Reviewing artifacts');
+    const progressIndex = out.indexOf('[status] Reviewing artifacts');
     const toolIndex = out.indexOf('[tool] Read');
     const outputIndex = out.indexOf('review output line');
     assert.ok(providerStartIndex >= 0);
     assert.ok(progressIndex > providerStartIndex, 'expected status after provider start');
     assert.ok(toolIndex > progressIndex, 'expected tool event after status event');
     assert.ok(outputIndex > toolIndex, 'expected final output after progress events');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('runReviewLoop: renders rich structured progress before final output', async () => {
+  const dir = await makeProject();
+  try {
+    const out: string[] = [];
+    const result = await runReviewLoop(
+      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        in: async () => 'n',
+      },
+      {
+        provider: providerWithProgress(
+          [
+            { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'turn/started' },
+            { kind: 'message', text: 'Comparing current state to build intent', phase: 'message' },
+            { kind: 'status', text: 'Plan updated', phase: 'plan', plan: [{ step: 'Inspect pipeline', status: 'completed' }] },
+            { kind: 'status', text: 'Diff updated', phase: 'diff', files: [{ path: 'docs/pipeline.md', status: 'modified' }] },
+          ],
+          { output: 'review output line' },
+        ),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    assert.ok(out.includes('[status] Agent turn started'));
+    assert.ok(out.includes('[message] Comparing current state to build intent'));
+    assert.ok(out.includes('[plan] Inspect pipeline [completed]'));
+    assert.ok(out.includes('[diff] docs/pipeline.md (modified)'));
+    const finalOutputIndex = out.indexOf('review output line');
+    const diffIndex = out.indexOf('[diff] docs/pipeline.md (modified)');
+    assert.ok(diffIndex >= 0 && finalOutputIndex > diffIndex, 'expected structured progress before final output');
   } finally {
     rmSync(dir, { recursive: true });
   }

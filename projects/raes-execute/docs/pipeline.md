@@ -448,7 +448,7 @@
     - normalized outputs match expected RAES progress events
     - unsupported notifications degrade safely without failing the turn
 
-- [ ] Slice 13l: Add rich operator progress rendering for execution and review loops.
+- [x] Slice 13l: Add rich operator progress rendering for execution and review loops.
   - Update `src/execution-loop.ts` and `src/review-loop.ts` to render normalized streaming events from the provider.
   - Show more than coarse lifecycle labels by surfacing:
     - current action
@@ -558,6 +558,34 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13l — 2026-05-06
+
+**Execution completed.** Added shared rich progress rendering in `src/progress-renderer.ts` and wired both `src/execution-loop.ts` and `src/review-loop.ts` to consume structured provider events. Loop output now surfaces status, message, tool, plan, and diff progress with deterministic command-output coalescing so long turns remain readable while preserving the final confirmation gate after the full agent result.
+
+**Files analyzed:**
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/raes.config.yaml`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/prd.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/pipeline.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/execution-guidance.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/decisions.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/validation.md`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/provider.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/execution-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/review-loop.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/src/progress-renderer.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/execution-loop.test.ts`
+- `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/tests/review-loop.test.ts`
+
+**Tests added/updated:** `tests/execution-loop.test.ts` and `tests/review-loop.test.ts` now assert structured progress rendering, command-output coalescing/truncation behavior, and confirmation ordering after the final agent output.
+
+**Validation run:**
+- `npm test -- tests/execution-loop.test.ts tests/review-loop.test.ts`
+- `npm test`
+- `npm run typecheck`
+
+**Operational notes for next operator:** Rendering currently treats diff updates as file-level summaries and plan updates as one line per step. Slice 13m should keep this loop-facing renderer stable while switching the OpenAI factory from `exec` to config-selected `exec` or `app_server`.
 
 ### Slice 13k — 2026-05-06
 

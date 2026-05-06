@@ -192,13 +192,90 @@ test('runExecutionLoop: prints intermediate provider progress before final outpu
     );
     assert.equal(result.exitCode, 0);
     const providerStartIndex = out.indexOf('Provider:    started; waiting for progress...');
-    const progressIndex = out.indexOf('[agent] Reading artifacts');
+    const progressIndex = out.indexOf('[status] Reading artifacts');
     const toolIndex = out.indexOf('[tool] Read');
     const outputIndex = out.indexOf('agent output line');
     assert.ok(providerStartIndex >= 0);
     assert.ok(progressIndex > providerStartIndex, 'expected status after provider start');
     assert.ok(toolIndex > progressIndex, 'expected tool event after status event');
     assert.ok(outputIndex > toolIndex, 'expected final output after progress events');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('runExecutionLoop: renders rich structured progress before final output', async () => {
+  const dir = await makeProject();
+  try {
+    const out: string[] = [];
+    const result = await runExecutionLoop(
+      { position: 1, label: 'Slice 1: Run execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        in: async () => 'n',
+      },
+      {
+        provider: providerWithProgress(
+          [
+            { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'turn/started' },
+            { kind: 'tool', text: 'Running npm test', phase: 'command', command: 'npm test', delta: 'PASS src/example.test.ts' },
+            { kind: 'status', text: 'Plan updated', phase: 'plan', plan: [{ step: 'Run tests', status: 'completed' }] },
+            { kind: 'status', text: 'Diff updated', phase: 'diff', files: [{ path: 'src/example.ts', status: 'modified' }] },
+          ],
+          { output: 'agent output line' },
+        ),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    assert.ok(out.includes('[status] Agent turn started'));
+    assert.ok(out.includes('[tool] Running npm test'));
+    assert.ok(out.includes('  command: npm test'));
+    assert.ok(out.includes('  output: PASS src/example.test.ts'));
+    assert.ok(out.includes('[plan] Run tests [completed]'));
+    assert.ok(out.includes('[diff] src/example.ts (modified)'));
+    const finalOutputIndex = out.indexOf('agent output line');
+    const diffIndex = out.indexOf('[diff] src/example.ts (modified)');
+    assert.ok(diffIndex >= 0 && finalOutputIndex > diffIndex, 'expected structured progress before final output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('runExecutionLoop: coalesces repeated noisy deltas predictably', async () => {
+  const dir = await makeProject();
+  try {
+    const out: string[] = [];
+    const result = await runExecutionLoop(
+      { position: 1, label: 'Slice 1: Run execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      {
+        out: (line) => out.push(line),
+        err: () => {},
+        in: async () => 'n',
+      },
+      {
+        provider: providerWithProgress(
+          [
+            { kind: 'tool', text: 'Streaming test output', phase: 'command', command: 'npm test', delta: 'line 1' },
+            { kind: 'tool', text: 'Streaming test output', phase: 'command', command: 'npm test', delta: 'line 2' },
+            { kind: 'tool', text: 'Streaming test output', phase: 'command', command: 'npm test', delta: 'line 3' },
+            { kind: 'tool', text: 'Streaming test output', phase: 'command', command: 'npm test', delta: 'line 4' },
+          ],
+          { output: 'agent output line' },
+        ),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    assert.equal(out.filter((line) => line === '[tool] Streaming test output').length, 1);
+    assert.ok(out.includes('  command: npm test'));
+    assert.ok(out.includes('  output: line 1 | line 2 | line 3'));
+    assert.ok(out.includes('  output: ... 1 more updates'));
   } finally {
     rmSync(dir, { recursive: true });
   }

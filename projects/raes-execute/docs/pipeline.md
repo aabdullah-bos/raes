@@ -439,6 +439,32 @@
 
 **Next operator:** Slice B2 is next. Consume `docs/b1-displaced-content.md` before making any further boundary edits, and do not delete it until both B2 and B3 have fully absorbed the staged sections.
 
+### Slice B3 — 2026-05-06
+
+**`execution-guidance.md` reconstructed to boundary compliance.** All changes verified against `raes-reference.md` Section 3a.
+
+**`## Invariants` removed.** The six execution-guidance.md invariants were verified present in `system.md` (`## Product Invariants`, `## Drift Guards`, `## Known Contracts`) before removal. The section is now absent from `execution-guidance.md`.
+
+**FLAG (open) — Invariant 6 not yet explicit in `system.md`:** "No AI Creativity or Content Generation" is recorded in `decisions.md` but is not yet a `system.md` Product Invariant or Drift Guard. A human should decide whether to promote it to `system.md`. This does not block B4.
+
+**`## Definition of Done` removed from `system.md`.** The seven-item `## Definition of Done` in `execution-guidance.md` is now the sole DoD for this project. The `system.md` DoD process rules (failing tests first, minimum implementation) are captured by the canonical RAES execution loop sequence in `raes-reference.md` Section 4. Recorded in `decisions.md`.
+
+**Workflow Rules 3 and 4 corrected.** The circular "according to RAES execution loop rules" phrase replaced with the explicit loop sequences. Both rules now also reflect the provider-submission model (CLI submits canonical prompt to provider; operator reviews output before recording completion).
+
+**Milestone 1 corrected.** CLI library options list removed; replaced with pointer to `decisions.md` TypeScript+Node toolchain decision. Performance baseline corrected from `<100ms` to `<200ms` to match the recorded contract.
+
+**`docs/b1-displaced-content.md` deleted.** All staged sections confirmed consumed:
+- `## Invariants`, `## Known Contracts`, `## Unknowns` — consumed by Slice B2 (system.md)
+- `## Purpose` — treated as absorbed by the existing `### TL;DR` in `prd.md`; the heading `## Purpose` is not permitted in `prd.md` per Section 3a and the content is already represented. Recorded in `decisions.md`.
+
+**FLAG (pre-existing, open) — `execution-guidance.md` and `prd.md` are truncated mid-sentence at line 224 and 204 respectively.** Both files end with "Validate inputs against" in Milestone 3. This is a pre-existing condition from project init, not introduced by B3. A human should complete Milestone 3 guidance or explicitly mark it as out-of-scope for remaining slices.
+
+**FLAG (pre-existing, open) — `system.md` not declared in `raes.config.yaml` as a formal artifact.** Noted in B1 and B2 handoffs; still unresolved. Proceeding to B4 since the backlog names `raes-reference.md` explicitly and the config/source mismatch does not block boundary compliance verification.
+
+**Validation:** 217 tests passing, typecheck clean, `--check-config` passes.
+
+**Next operator:** Slice B4 is next — verify boundary compliance across all artifacts, run `--check-config` and `--execute-next-slice --dry-run`.
+
 ### Slice B2 — 2026-05-06
 
 **`system.md` reconstructed from authoritative sources.** `/Users/aquilabdullah/devel/projects/raes/docs/raes-reference.md`, `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/b1-displaced-content.md`, and `/Users/aquilabdullah/devel/projects/raes/projects/raes-execute/docs/system.md` were compared section-by-section. The staged `Invariants`, `Known Contracts`, and `Unknowns` content was consumed into `system.md`, keeping the more accurate live-project wording where the staged copy was stale.

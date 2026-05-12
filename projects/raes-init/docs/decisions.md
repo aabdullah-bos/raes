@@ -96,3 +96,15 @@
 - The authoritative V1 output set for all supported archetypes is: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, `raes.config.yaml`.
 - Any default fallback content in `generate-docs.ts` (e.g. Known Contracts lists) must name all 8 files to remain consistent with this contract.
 - Any authoritative project doc (`system.md`, `raes.config.yaml`) that lists the output set must name all 8 files.
+
+### 2026-05-05 — Canonical RAES project layout uses a project-root `raes.config.yaml`
+
+- The canonical RAES project layout is `<project>/raes.config.yaml` plus living loop docs under `<project>/docs/`.
+- The generated config continues to point to doc artifacts with `docs/...` paths; only the config file location is canonicalized to project root.
+- Existing repos that still place `raes.config.yaml` under `docs/` are legacy layouts that require an explicit migration slice; they do not redefine the shared RAES contract.
+
+### 2026-05-05 — Shared artifact boundaries live in `raes-reference.md`; local decisions record adoption and rationale
+
+- `raes-reference.md` is the canonical home for shared artifact definitions and cross-tool contracts.
+- `raes-init` local docs adopt those contracts: `prd.md` for user-visible init behavior, `system.md` for durable local constraints, and `decisions.md` for rationale and tradeoffs.
+- Future init slices should update local docs only when adopting or implementing a shared rule, not by creating a competing definition of that rule.

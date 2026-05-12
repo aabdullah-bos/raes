@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlices, getPipelineStatus } from '../src/pipeline.ts';
+import { parseSlices, getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from '../src/pipeline.ts';
 
 const BACKLOG_ONLY = `
 ## Slice Backlog
@@ -149,4 +149,139 @@ test('getPipelineStatus returns empty slices array for empty content', () => {
   assert.equal(status.totalComplete, 0);
   assert.equal(status.totalRemaining, 0);
   assert.equal(status.nextSlice, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// formatSliceList
+// ---------------------------------------------------------------------------
+
+test('formatSliceList returns empty array for empty slices', () => {
+  const lines = formatSliceList([]);
+  assert.deepEqual(lines, []);
+});
+
+test('formatSliceList returns one line per slice', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.equal(lines.length, 4);
+});
+
+test('formatSliceList uses ✓ for complete slices', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].includes('✓'), 'complete slice should show ✓');
+  assert.ok(lines[1].includes('✓'), 'second complete slice should show ✓');
+});
+
+test('formatSliceList uses ○ for pending slices', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[2].includes('○'), 'first pending slice should show ○');
+  assert.ok(lines[3].includes('○'), 'second pending slice should show ○');
+});
+
+test('formatSliceList includes position number in each line', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].trimStart().startsWith('1'), 'first line should start with position 1');
+  assert.ok(lines[3].trimStart().startsWith('4'), 'fourth line should start with position 4');
+});
+
+test('formatSliceList includes slice label in each line', () => {
+  const slices = parseSlices(BACKLOG_ONLY);
+  const lines = formatSliceList(slices);
+  assert.ok(lines[0].includes('First slice label'), 'first line should include label');
+  assert.ok(lines[2].includes('Third slice label'), 'third line should include label');
+});
+
+// ---------------------------------------------------------------------------
+// formatNextSlice
+// ---------------------------------------------------------------------------
+
+test('formatNextSlice returns non-empty lines for a pending slice', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.length > 0);
+});
+
+test('formatNextSlice includes position number in output', () => {
+  const slice = { position: 7, label: 'Slice 7: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('7')), 'should include position number');
+});
+
+test('formatNextSlice includes "Position" label', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().includes('position')), 'should have Position label');
+});
+
+test('formatNextSlice shows "pending" status for unchecked slice', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('pending')), 'should show pending status');
+});
+
+test('formatNextSlice shows "complete" status for checked slice', () => {
+  const slice = { position: 1, label: 'Slice 1: Done', complete: true };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('complete')), 'should show complete status');
+});
+
+test('formatNextSlice includes "Status" label', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().includes('status')), 'should have Status label');
+});
+
+test('formatNextSlice includes slice label text', () => {
+  const slice = { position: 3, label: 'Slice 3: Do something specific', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.includes('Slice 3: Do something specific')), 'should include label text');
+});
+
+test('formatNextSlice includes "Label" field', () => {
+  const slice = { position: 1, label: 'Slice 1: Test', complete: false };
+  const lines = formatNextSlice(slice);
+  assert.ok(lines.some((l) => l.toLowerCase().startsWith('label')), 'should have Label field');
+});
+
+// ---------------------------------------------------------------------------
+// determineLoopType
+// ---------------------------------------------------------------------------
+
+test('determineLoopType returns "execution" for a standard implementation slice', () => {
+  const slice = { position: 10, label: 'Slice 10: implement --execute-next-slice skeleton', complete: false };
+  assert.equal(determineLoopType(slice), 'execution');
+});
+
+test('determineLoopType returns "review" when label contains lowercase "review"', () => {
+  const slice = { position: 12, label: 'Slice 12: review decisions and promote constraints', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
+});
+
+test('determineLoopType returns "review" when label contains capitalized "Review"', () => {
+  const slice = { position: 12, label: 'Slice 12: Implement Review Loop for --execute-next-slice', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
+});
+
+test('determineLoopType does not match "preview" as a review slice', () => {
+  const slice = { position: 5, label: 'Slice 5: preview and inspect current state', complete: false };
+  assert.equal(determineLoopType(slice), 'execution');
+});
+
+test('determineLoopType returns "review" for a slice whose label is exactly the word "review"', () => {
+  const slice = { position: 1, label: 'review', complete: false };
+  assert.equal(determineLoopType(slice), 'review');
+});
+
+test('formatSliceList pads position column when max position is multi-digit', () => {
+  const tenSlices = Array.from({ length: 10 }, (_, i) => ({
+    position: i + 1,
+    label: `Slice ${i + 1}: label`,
+    complete: false,
+  }));
+  const lines = formatSliceList(tenSlices);
+  assert.ok(lines[0].startsWith(' 1'), 'single-digit position should be right-padded when max is 2 digits');
+  assert.ok(lines[9].startsWith('10'), 'double-digit position should not be padded');
 });

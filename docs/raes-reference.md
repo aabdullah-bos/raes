@@ -36,35 +36,185 @@ Workflow automation assumes known, repeatable processes. RAES is designed for th
 
 ## 3. Artifact Responsibilities
 
-RAES uses three core truth artifacts. Each has one job. Keeping them single-purpose is what keeps truth small.
+RAES uses a set of single-purpose artifacts. Keeping each one focused on a single job is what keeps the truth surface small and navigable. The full artifact list — each file's job, decision right, mutation rules, and permitted headings — is in Section 3a.
 
-| Artifact | Job | Answers |
-|----------|-----|---------|
-| **PRD** | Product intent for users | What are we building and why? |
-| **system.md** | Execution constraints | What must remain true in every future slice? |
-| **decisions.md** | Rationale audit trail | Why did we make a specific choice? |
+---
 
-### What belongs where
+## 3a. Artifact File Boundaries
 
-**PRD**
-- Yes: problem statement, target user, scope, success criteria, experience intent
-- No: implementation choices, framework selections, technical constraints
+### Decision Rights Table
 
-**system.md**
-- Yes: invariants, drift guards, contracts, definitions of done, constraints promoted from decisions
-- No: rationale for why a constraint exists (that's decisions.md), product intent (that's the PRD)
+| File | Job | Decision Right | Mutated By |
+|------|-----|----------------|------------|
+| `prd.md` | Product intent | What are we building and why? | Human only (at init or PRD revision) |
+| `system.md` | Execution constraints | What must remain true across ALL future slices? | Human promotes constraint; agent reads it |
+| `decisions.md` | Rationale audit trail | Why was a specific choice made? | Agent appends; human reviews |
+| `pipeline.md` | Slice backlog + handoff state | What gets executed and in what order? | Agent appends handoff notes; human approves slices |
+| `execution-guidance.md` | Workflow rules, anti-patterns, milestone guidance | How do we execute? | Agent updates only if durable rule discovered mid-slice |
+| `validation.md` | Testing approach and validation commands | How do we verify correctness? | Mostly static; agent may append commands |
+| `prd-ux-review.md` | UX ambiguity surface (bootstrap only) | Are there UX gaps in the PRD before first slice? | Human reads once, transfers findings, then done |
 
-**decisions.md**
-- Yes: what was decided, why, alternatives considered, reference to where the resulting constraint lives in system.md
-- No: the constraint itself — once a decision produces a durable constraint, that constraint belongs in system.md
+---
 
-### The promotion rule
+### Permitted and Forbidden Headings
 
-When a decision during execution produces a durable constraint:
-1. Add the constraint to `system.md` (under the appropriate section: Invariants, Drift Guards, or Contracts)
-2. Record the rationale in `decisions.md` with a reference to the system.md section where the constraint lives
+#### `prd.md`
 
-This keeps the execution loop's constraint surface small and stable. The agent reads `system.md` for what it must respect. It reads `decisions.md` only to understand why — not to extract constraints.
+**Job:** Product intent — what are we building and why.
+
+**Permitted headings:**
+- `## Goals` / `### Business Goals` / `### User Goals` / `### Non-Goals`
+- `## User Stories`
+- `## Functional Requirements`
+- `## User Experience`
+- `## Narrative`
+- `## Success Metrics` / `### Tracking Plan`
+- `## Technical Considerations`
+- `## Milestones & Sequencing`
+- `## TL;DR`
+
+**Forbidden headings:**
+- `## Invariants` — belongs in `system.md`
+- `## Product Invariants` — belongs in `system.md`
+- `## Drift Guards` — belongs in `system.md`
+- `## Known Contracts` — belongs in `system.md`
+- `## Unknowns` — belongs in `system.md`
+- `## Anti-Patterns` — belongs in `execution-guidance.md`
+- `## Definition of Done` — belongs in `execution-guidance.md`
+- `## Durable Decisions` — belongs in `decisions.md`
+- `## Slice Backlog` — belongs in `pipeline.md`
+- `## Handoff Notes` — belongs in `pipeline.md`
+
+---
+
+#### `system.md`
+
+**Job:** Execution constraints — what must remain true across all future slices.
+
+**Permitted headings:**
+- `## Purpose`
+- `## Product Invariants`
+- `## Drift Guards`
+- `## Known Contracts`
+- `## Unknowns`
+- `## Anti-Patterns`
+- `## Definition of Done`
+
+**Forbidden headings:**
+- `## Goals` / `## User Stories` / `## Functional Requirements` — belongs in `prd.md`
+- `## Durable Decisions` — belongs in `decisions.md`
+- `## Slice Backlog` / `## Handoff Notes` — belongs in `pipeline.md`
+- `## Workflow Rules` / `## Milestone Guidance` — belongs in `execution-guidance.md`
+- `## Testing Approach` / `## Validation Commands` — belongs in `validation.md`
+
+**Promotion rule:** When an agent discovers a new constraint mid-slice, it must flag it. The human decides whether it is promoted to `system.md`. Promotion is explicit and recorded in `decisions.md` with date and rationale. Agents do not write to `system.md` directly.
+
+---
+
+#### `decisions.md`
+
+**Job:** Rationale audit trail — why was a specific choice made.
+
+**Permitted headings:**
+- `## Durable Decisions`
+- Decision table with columns: `Decision | Rationale | Date`
+
+**Forbidden headings:**
+- `## Invariants` / `## Product Invariants` — belongs in `system.md`
+- `## Workflow Rules` / `## Anti-Patterns` — belongs in `execution-guidance.md`
+- `## Slice Backlog` — belongs in `pipeline.md`
+- `## Goals` / `## Functional Requirements` — belongs in `prd.md`
+
+**Promotion rule:** When an Unknown in `system.md` is resolved, the resolution is recorded here as a new decision entry with date. The Unknown is then removed from `system.md`. Decisions are append-only; existing entries are never modified.
+
+---
+
+#### `pipeline.md`
+
+**Job:** Slice backlog + handoff state — what gets executed and in what order.
+
+**Permitted headings:**
+- `## Slice Backlog`
+- `## Handoff Notes` (one sub-section per completed slice, e.g. `### Slice N — YYYY-MM-DD`)
+
+**Forbidden headings:**
+- `## Purpose` — belongs in `prd.md`
+- `## Invariants` / `## Product Invariants` — belongs in `system.md`
+- `## Drift Guards` — belongs in `system.md`
+- `## Known Contracts` — belongs in `system.md`
+- `## Unknowns` — belongs in `system.md`
+- `## Workflow Rules` / `## Anti-Patterns` — belongs in `execution-guidance.md`
+- `## Durable Decisions` — belongs in `decisions.md`
+
+**Mutation rule:** Agent appends handoff notes after each completed slice. Agent marks slices as checked. Human approves slice definitions before they are added to the backlog. No other content is written to this file.
+
+---
+
+#### `execution-guidance.md`
+
+**Job:** Workflow rules, anti-patterns, milestone guidance — how do we execute.
+
+**Permitted headings:**
+- `## Workflow Rules`
+- `## Anti-Patterns`
+- `## Definition of Done`
+- `## Milestone Guidance` / `### Milestone N: <name>`
+
+**Forbidden headings:**
+- `## Invariants` / `## Product Invariants` / `## Drift Guards` — belongs in `system.md`
+- `## Known Contracts` / `## Unknowns` — belongs in `system.md`
+- `## Durable Decisions` — belongs in `decisions.md`
+- `## Slice Backlog` / `## Handoff Notes` — belongs in `pipeline.md`
+- `## Goals` / `## Functional Requirements` — belongs in `prd.md`
+- `## Validation Commands` / `## Testing Approach` — belongs in `validation.md`
+
+**Mutation rule:** Agent may update this file only when a durable execution rule is discovered mid-slice that is not already captured. The update must be scoped to the relevant section. No other mid-slice writes are permitted. All other content is set at init and revised only by human.
+
+---
+
+#### `validation.md`
+
+**Job:** Testing approach and validation commands — how do we verify correctness.
+
+**Permitted headings:**
+- `## Testing Approach`
+- `## Validation Commands`
+- `## Known Constraints`
+
+**Forbidden headings:**
+- `## Invariants` / `## Product Invariants` — belongs in `system.md`
+- `## Workflow Rules` / `## Anti-Patterns` — belongs in `execution-guidance.md`
+- `## Durable Decisions` — belongs in `decisions.md`
+- `## Slice Backlog` — belongs in `pipeline.md`
+
+**Mutation rule:** Mostly static. Agent may append new validation commands discovered during a slice. No other writes.
+
+---
+
+#### `prd-ux-review.md`
+
+**Job:** UX ambiguity surface — bootstrap only.
+
+**Permitted headings:**
+- `## UX Gaps`
+- `## Open Questions`
+- `## Findings`
+
+**Forbidden headings:** All operational headings — this file is read-once at project bootstrap. Any findings must be transferred to `prd.md` (if they affect product intent) or `system.md` (if they surface constraints) before the first execution slice begins. Once findings are transferred, this file is considered done and is not updated again.
+
+**Mutation rule:** Human reads once, transfers findings to the correct artifact, marks file as done. Agent never writes to this file.
+
+---
+
+### Promotion and Cross-Reference Rules
+
+1. **Unknown → Decision:** When an Unknown in `system.md` is resolved, record the resolution in `decisions.md` with date and rationale. Remove the Unknown from `system.md`.
+
+2. **Decision → System Constraint:** When a decision in `decisions.md` rises to the level of a project-wide invariant, the human promotes it to `system.md` as a Product Invariant or Known Contract. The `decisions.md` entry is not removed — it remains as the rationale for why the constraint exists.
+
+3. **Mid-slice discovery → Execution Guidance:** When an agent discovers a new durable execution rule during a slice, it flags it. The human decides whether it is added to `execution-guidance.md`. The addition is recorded in `decisions.md`.
+
+4. **No agent promotion without flag:** Agents never move content between artifacts autonomously. Every cross-artifact promotion requires an explicit flag, human review, and a `decisions.md` entry.
 
 ---
 
@@ -143,7 +293,35 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 **What does NOT belong in config:** the content of those artifacts. When new constraints emerge during execution, they are recorded in the project's existing truth artifacts — `pipeline.md` for slice progression and workflow guidance, `decisions.md` for durable choices that future slices must respect, `system.md` when the project has a stable project-wide rules document. RAES picks those constraints up on the next pass. This keeps config thin and prevents it from becoming a second documentation system.
 
-**Config schema:** defined and implemented in `projects/raes-init/src/generate-docs.ts`. See `projects/raes-init/docs/raes.config.yaml` for a live example.
+### Artifact Boundary Rule
+
+Use this rule whenever a fact could plausibly fit in more than one artifact:
+
+- `raes-reference.md` owns shared RAES definitions and cross-tool contracts.
+- `prd.md` owns product-specific required behavior, scope, and non-goals for one tool.
+- `system.md` owns active durable constraints for one project. If the agent must obey a rule directly across future slices, it belongs here.
+- `decisions.md` owns rationale, tradeoffs, and adoption history for one project. It explains why a local choice was made; it does not become the shared RAES spec.
+- `execution-guidance.md` owns slice execution workflow rules for one project. It tells the operator or agent how to execute remaining slices; it does not redefine product requirements or shared RAES doctrine.
+- `pipeline.md` owns sequencing, backlog state, and slice-local handoff context. It is not the durable home for cross-project rules.
+
+Constraint promotion follows this boundary:
+
+1. Shared RAES rule or artifact definition: record it in `raes-reference.md`.
+2. Tool-specific required behavior: reflect it in that tool's `prd.md`.
+3. Tool-specific durable implementation constraint: promote it into that tool's `system.md`.
+4. Rationale for the choice: record it in that tool's `decisions.md`.
+
+### Config Location Contract
+
+- The canonical location of `raes.config.yaml` is the RAES project root, not `docs/`.
+- Canonical project layout is `<project>/raes.config.yaml` plus living loop docs under `<project>/docs/`.
+- `raes-init` should generate this layout by default.
+- `raes-execute` should read `./raes.config.yaml` from the current working directory by default and may support an explicit `--config <path>` override for monorepos.
+- RAES tools must not rely on implicit upward search or repo-wide discovery to pick a project config.
+
+Legacy repos may still contain `docs/raes.config.yaml` during migration. That layout is transitional only; it does not change the canonical contract above.
+
+**Config schema:** defined and implemented in `projects/raes-init/src/generate-docs.ts`. Existing project-local examples may still show the pre-migration `docs/raes.config.yaml` layout until their update slices land.
 
 ---
 
@@ -158,7 +336,7 @@ Initializes a greenfield project. Supports two modes:
 - **Bare greenfield** (`raes-init <target-path> <archetype>`) — generates stub docs with section structure and no content.
 - **PRD-seeded** (`raes-init --from-prd <prd-path> <target-path> <archetype>`) — generates docs adapted from an existing PRD file.
 
-Both modes produce the same eight-file output set in `<target>/docs/`: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, `validation.md`, and `raes.config.yaml`. Write behavior is create-or-fail: no overwrite, no merge.
+Both modes produce the same RAES project layout: `raes.config.yaml` in `<target>/` plus seven living docs in `<target>/docs/`: `prd.md`, `system.md`, `pipeline.md`, `decisions.md`, `prd-ux-review.md`, `execution-guidance.md`, and `validation.md`. Write behavior is create-or-fail: no overwrite, no merge.
 
 Current status: V1 implemented in TypeScript. Supports the `cli-doc-generator` archetype. Located at `projects/raes-init/`.
 
@@ -191,7 +369,7 @@ This structure is platform-agnostic — it does not assume a specific agent runt
 A single prompt handles both slice types. The agent identifies the slice type from the pipeline and applies the appropriate rules.
 
 ```
-Read `docs/raes.config.yaml` first and use it to locate the authoritative
+Read `raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
 - system constraints

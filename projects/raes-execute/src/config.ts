@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 export interface RaesConfig {
   project: { name: string };
@@ -10,6 +10,16 @@ export interface RaesConfig {
     durable_decisions: string;
     execution_guidance: string;
     validation: string;
+  };
+  provider: {
+    name: 'anthropic' | 'openai';
+    model?: string;
+    openai?: {
+      transport: 'exec' | 'app_server';
+    };
+    sandbox?: {
+      write_access?: boolean;
+    };
   };
 }
 
@@ -61,6 +71,27 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function nonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.trim().length > 0;
+}
+
+function resolveConfigProjectRoot(projectRoot: string, configPathOverride?: string): {
+  configPath: string;
+  projectRoot: string;
+} {
+  const configPath = configPathOverride !== undefined
+    ? resolve(projectRoot, configPathOverride)
+    : join(projectRoot, 'raes.config.yaml');
+
+  if (configPathOverride === undefined) {
+    return { configPath, projectRoot };
+  }
+
+  const configDir = dirname(configPath);
+  const legacyConfigName = join('docs', 'raes.config.yaml');
+  const normalizedSuffix = configPath.endsWith(legacyConfigName);
+  return {
+    configPath,
+    projectRoot: normalizedSuffix ? dirname(configDir) : configDir,
+  };
 }
 
 export function extractConfig(
@@ -159,7 +190,66 @@ export function extractConfig(
     }
   }
 
+  const providerRaw = data['provider'];
+  if (!isObject(providerRaw)) {
+    errors.push({
+      field: 'provider',
+      message: "missing required section 'provider' — raes.config.yaml",
+      fix: "Add a 'provider:' section with 'name: anthropic' or 'name: openai' to raes.config.yaml",
+    });
+  } else {
+    const providerName = providerRaw['name'];
+    if (!nonEmptyString(providerName)) {
+      errors.push({
+        field: 'provider.name',
+        message: "missing or empty 'provider.name' — raes.config.yaml",
+        fix: "Set 'provider.name' to 'anthropic' or 'openai' in raes.config.yaml",
+      });
+    } else if (providerName !== 'anthropic' && providerName !== 'openai') {
+      errors.push({
+        field: 'provider.name',
+        message: `unknown provider '${providerName}' — raes.config.yaml`,
+        fix: "Set 'provider.name' to one of: anthropic, openai",
+      });
+    } else if (providerName === 'openai') {
+      const openaiRaw = providerRaw['openai'];
+      if (openaiRaw !== undefined && !isObject(openaiRaw)) {
+        errors.push({
+          field: 'provider.openai',
+          message: "invalid 'provider.openai' section — raes.config.yaml",
+          fix: "Set 'provider.openai.transport' to 'exec' or 'app_server', or remove the 'openai:' block to use the default transport",
+        });
+      } else if (isObject(openaiRaw)) {
+        const transport = openaiRaw['transport'];
+        if (
+          transport !== undefined &&
+          transport !== 'exec' &&
+          transport !== 'app_server'
+        ) {
+          errors.push({
+            field: 'provider.openai.transport',
+            message: `unknown OpenAI transport '${String(transport)}' — raes.config.yaml`,
+            fix: "Set 'provider.openai.transport' to 'exec' or 'app_server'",
+          });
+        }
+      }
+    }
+  }
+
   if (errors.length > 0) return { errors };
+
+  const provider = data['provider'] as Record<string, unknown>;
+  const sandboxRaw = provider['sandbox'];
+  const openaiRaw = isObject(provider['openai'])
+    ? provider['openai'] as Record<string, unknown>
+    : undefined;
+  const sandboxObj = isObject(sandboxRaw) ? (sandboxRaw as Record<string, unknown>) : undefined;
+  let writeAccess: boolean | undefined;
+  if (sandboxObj !== undefined) {
+    const wa = sandboxObj['write_access'];
+    if (wa === 'true' || wa === true) writeAccess = true;
+    else if (wa === 'false' || wa === false) writeAccess = false;
+  }
 
   const config: RaesConfig = {
     project: { name: (projectRaw as Record<string, unknown>)['name'] as string },
@@ -173,6 +263,22 @@ export function extractConfig(
       durable_decisions: sourcesRaw['durable_decisions'] as string,
       execution_guidance: sourcesRaw['execution_guidance'] as string,
       validation: sourcesRaw['validation'] as string,
+    },
+    provider: {
+      name: provider['name'] as 'anthropic' | 'openai',
+      ...(nonEmptyString(provider['model']) ? { model: provider['model'] as string } : {}),
+      ...(
+        provider['name'] === 'openai'
+          ? {
+              openai: {
+                transport: (openaiRaw?.['transport'] as 'exec' | 'app_server' | undefined) ?? 'exec',
+              },
+            }
+          : {}
+      ),
+      ...(sandboxObj !== undefined
+        ? { sandbox: writeAccess !== undefined ? { write_access: writeAccess } : {} }
+        : {}),
     },
   };
 
@@ -207,8 +313,12 @@ export function validatePaths(config: RaesConfig, projectRoot: string): ConfigEr
 
 export function checkConfig(
   projectRoot: string,
-): { errors: ConfigError[]; config?: RaesConfig } {
-  const configPath = join(projectRoot, 'raes.config.yaml');
+  configPathOverride?: string,
+): { errors: ConfigError[]; config?: RaesConfig; projectRoot?: string; configPath?: string } {
+  const { configPath, projectRoot: resolvedProjectRoot } = resolveConfigProjectRoot(
+    projectRoot,
+    configPathOverride,
+  );
 
   if (!existsSync(configPath)) {
     return {
@@ -216,7 +326,9 @@ export function checkConfig(
         {
           field: 'raes.config.yaml',
           message: `raes.config.yaml not found — expected at: ${configPath}`,
-          fix: "Run 'raes init' or create raes.config.yaml in the project root",
+          fix: configPathOverride !== undefined
+            ? "Pass a valid --config <path> pointing to a RAES project config file"
+            : "Run from a RAES project root, pass --config <path>, or create raes.config.yaml in the project root",
         },
       ],
     };
@@ -247,8 +359,8 @@ export function checkConfig(
     };
   }
 
-  const pathErrors = validatePaths(config, projectRoot);
+  const pathErrors = validatePaths(config, resolvedProjectRoot);
   if (pathErrors.length > 0) return { errors: pathErrors };
 
-  return { errors: [], config };
+  return { errors: [], config, projectRoot: resolvedProjectRoot, configPath };
 }

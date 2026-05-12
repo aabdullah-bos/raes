@@ -1,37 +1,5 @@
 # RAES Execute: Execution Guidance
 
-## Invariants
-
-1. **Artifact Boundary Discipline is Non-Negotiable**
-   - Each artifact (prd.md, system.md, decisions.md, etc.) has a single, immutable purpose as defined by RAES reference.
-   - Constraints, rationale, goals, and acceptance criteria must never be mingled across artifact types.
-   - The CLI must validate and enforce artifact boundaries on every execution; no exception handling allows boundary violation to pass silently.
-
-2. **One Slice Per Invocation**
-   - `--execute-next-slice` advances exactly one slice and halts.
-   - Multi-slice or batch execution is explicitly out of scope; the tool enforces serial, bounded progression.
-   - Each slice must complete its assigned loop (Execution or Review) before the next slice is eligible for execution.
-
-3. **Ambiguity Halts Work**
-   - If any artifact is missing, conflicting, or ambiguous, the CLI must halt execution and surface the issue with actionable guidance.
-   - No workarounds, defaults, or "best guess" inference are allowed; ambiguity must be resolved by human decision before work advances.
-   - Flags raised via `--flag` must be resolved (or explicitly cleared) before the next slice can execute.
-
-4. **Project State is Durable and Auditable**
-   - All artifact changes, slice completions, and flag resolutions are recorded in history with timestamps and context.
-   - History must be machine-readable (supporting JSON/YAML export in future versions) and human-inspectable.
-   - Config and artifact versions are immutable once a slice references them; changes to config require human review and flag resolution.
-
-5. **CLI Writes Only to Correct Artifacts**
-   - The tool updates only the artifact(s) designated for the current slice's type and loop.
-   - Updates are atomic; partial writes or incomplete state transitions are prohibited.
-   - No modifications to artifacts outside the slice boundary are permitted.
-
-6. **No AI Creativity or Content Generation**
-   - RAES Execute enforces workflow and discipline, not content creativity or prompt optimization.
-   - The CLI guides the operator/agent through loops and validates inputs; it does not author, infer, or rewrite content.
-   - Human or external AI agent is responsible for all substantive decisions and artifact content; the CLI only checks that boundaries and rules are respected.
-
 ## Workflow Rules
 
 1. **Initialization & Validation Before Execution**
@@ -45,17 +13,20 @@
    - If the user or agent opts not to proceed, the slice remains unchecked; no partial state is recorded.
 
 3. **Execution Loop (for Implementation Slices)**
+   - Loop sequence: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
    - CLI loads the slice definition and confirms its type is "implementation" or equivalent.
-   - CLI prompts the operator/agent for decisions/inputs according to RAES execution loop rules.
+   - CLI loads the canonical prompt and submits it to the configured provider; the provider executes the loop steps.
    - CLI enforces that only designated artifacts are modified for this slice.
-   - Operator/agent provides evidence/justification for each decision; CLI records it.
-   - Upon completion, CLI atomically updates artifacts and marks slice as checked.
+   - Operator reviews provider output and confirms or declines recording completion.
+   - Upon confirmation, CLI atomically updates artifacts and marks slice as checked.
 
 4. **Review Loop (for Review/Decision Slices)**
+   - Loop sequence: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
    - CLI loads the slice definition and confirms its type is "review," "decision," or equivalent.
-   - CLI prompts the operator/agent to review relevant artifacts and prior slice history.
+   - CLI loads the canonical prompt and submits it to the configured provider; the provider executes the loop steps.
    - CLI enforces that review findings and decisions are recorded in decisions.md or appropriate artifact without mingling.
-   - Upon completion, CLI marks slice as checked and flags any constraints for promotion to system.md if needed.
+   - Operator reviews provider output and confirms or declines recording completion.
+   - Upon confirmation, CLI marks slice as checked and flags any constraints for promotion to system.md if needed.
 
 5. **Constraint Promotion & Boundary Validation**
    - If a new constraint is added to decisions.md, CLI must warn user that system.md may require update.
@@ -160,7 +131,7 @@ A slice execution is complete and ready for advancement when:
 
 **Key Implementation Considerations**
 
-- **CLI Framework & Argument Parsing:** Choose a robust CLI library (e.g., Click for Python, Commander.js for Node, Cobra for Go) that supports short/long options, error handling, and help generation. Ensure `--help` is always available and outputs concise, actionable usage information.
+- **CLI Framework & Argument Parsing:** The toolchain decision is recorded in `decisions.md` (TypeScript + Node.js, `--experimental-strip-types`, no build step, no external runtime dependencies). Implement argument parsing natively without adding a CLI library dependency. Ensure `--help` is always available and outputs concise, actionable usage information.
 
 - **Config Loading & Schema Validation:** Implement a YAML/JSON parser and schema validator for raes.config.yaml. Define the expected schema (pipeline slices, artifact paths, milestone names, etc.) based on RAES Init outputs. Validation must be strict: reject unknown keys, missing required fields, and invalid paths.
 
@@ -182,7 +153,7 @@ This milestone is foundational: without robust config validation and state initi
 - **Error Message Standard:** Define a standard for error messages (include file path, line number, what is wrong, how to fix). Apply this standard consistently across all CLI output.
 - **State File Format:** Choose a simple, durable format (YAML or JSON) for tracking slices and history. Plan for extensibility (future fields for flags, resolution status, etc.) but keep the initial version minimal.
 - **Testing Approach:** Plan unit tests for config parsing, path resolution, and error cases. Create fixture configs (valid, invalid, partial) for testing. This is critical because config validation is a guardrail; if it breaks, the whole tool is unreliable.
-- **Performance Baseline:** Aim to complete `--check-config` in <100ms on commodity hardware. Measure early; if config parsing is slow, refactor before moving to later milestones.
+- **Performance Baseline:** Aim to complete `--check-config` in <200ms on commodity hardware (see `decisions.md`: "CLI core commands must execute in under 200ms"). Measure early; if config parsing is slow, refactor before moving to later milestones.
 
 ---
 

@@ -48,3 +48,31 @@ export function getPipelineStatus(content: string): PipelineStatus {
   const nextSlice = slices.find((s) => !s.complete);
   return { slices, nextSlice, totalComplete, totalRemaining };
 }
+
+export function formatNextSlice(slice: Slice): string[] {
+  const entries: Array<[string, string]> = [
+    ['Position', String(slice.position)],
+    ['Status', slice.complete ? 'complete' : 'pending'],
+    ['Label', slice.label],
+  ];
+  const maxKey = Math.max(...entries.map(([k]) => k.length));
+  return entries.map(([k, v]) => `${(k + ':').padEnd(maxKey + 3)}${v}`);
+}
+
+// Infers loop type from slice label. Slices with "review" as a whole word
+// (case-insensitive) route to the Review Loop; all others route to the
+// Execution Loop. This is a known limitation of the current pipeline format,
+// which carries no explicit type metadata.
+export function determineLoopType(slice: Slice): 'execution' | 'review' {
+  return /\breview\b/i.test(slice.label) ? 'review' : 'execution';
+}
+
+export function formatSliceList(slices: Slice[]): string[] {
+  if (slices.length === 0) return [];
+  const posWidth = String(slices[slices.length - 1].position).length;
+  return slices.map((s) => {
+    const pos = String(s.position).padStart(posWidth);
+    const status = s.complete ? '✓' : '○';
+    return `${pos}  ${status}  ${s.label}`;
+  });
+}

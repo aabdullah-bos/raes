@@ -35,6 +35,7 @@ function makeConfig(projectRoot: string): RaesConfig {
       execution_guidance: 'docs/execution-guidance.md',
       validation: 'docs/validation.md',
     },
+    provider: { name: 'anthropic' },
   };
 }
 

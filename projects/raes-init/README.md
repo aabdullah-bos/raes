@@ -34,15 +34,16 @@ Given:
 It generates a complete RAES docs set:
 
 ```
-<target>/docs/
-├── prd.md (if it does not exist)
-├── system.md
-├── pipeline.md
-├── decisions.md
-├── prd-ux-review.md
-├── execution-guidance.md
-├── validation.md
-└── raes.config.yaml
+<target>/
+├── raes.config.yaml
+└── docs/
+    ├── prd.md (if it does not exist)
+    ├── system.md
+    ├── pipeline.md
+    ├── decisions.md
+    ├── prd-ux-review.md
+    ├── execution-guidance.md
+    └── validation.md
 ```
 
 ---
@@ -145,7 +146,7 @@ A system for making AI behave like a disciplined engineer.
 - Greenfield or Single PRD input
 - Three archetypes: `cli-doc-generator` (used to build raes-init), `frontend-backend-ai-app`, `cli`
 - Create-or-fail writes
-- Docs-only output (8 files, including `raes.config.yaml`)
+- Project-root config plus 7 docs output
 - TypeScript / Node.js runtime
 
 ---

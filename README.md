@@ -113,7 +113,7 @@ A RAES project creates a `/docs` directory:
   prd-ux-review.md           # Where is UX ambiguous?
   execution-guidance.md      # How should slices be executed?
   validation.md              # How do we verify correctness?
-  raes.config.yaml           # Where do authoritative sources live?
+raes.config.yaml             # Where do authoritative sources live?
 ```
 
 These documents are not just documentation.
@@ -132,6 +132,7 @@ They are your execution system — the durable context that guides every step.
 
 ```
 mkdir docs
+touch raes.config.yaml
 touch docs/prd.md
 touch docs/system.md
 touch docs/pipeline.md
@@ -160,7 +161,7 @@ touch docs/validation.md
 ## Example Execution Prompt
 
 ```
-Read `docs/raes.config.yaml` first and use it to locate the authoritative
+Read `raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
 - next slice

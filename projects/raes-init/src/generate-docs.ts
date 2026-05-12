@@ -28,17 +28,12 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
     '## Definition of Done'
   ],
   'pipeline.md': [
-    '## Purpose',
-    '## Invariants',
-    '## Known Contracts',
-    '## Unknowns',
     '## Slice Backlog',
     '## Handoff Notes'
   ],
   'decisions.md': ['## Durable Decisions'],
   'prd-ux-review.md': ['## Purpose', '## Observed Requirements', '## UX Risks', '## Open Questions'],
   'execution-guidance.md': [
-    '## Invariants',
     '## Workflow Rules',
     '## Anti-Patterns',
     '## Definition of Done',
@@ -49,6 +44,30 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
 };
 
 export class GenerationError extends Error {}
+
+const FORBIDDEN_DOC_HEADINGS: Record<string, string[]> = {
+  'pipeline.md': [
+    '## Purpose',
+    '## Invariants',
+    '## Product Invariants',
+    '## Drift Guards',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Workflow Rules',
+    '## Anti-Patterns',
+    '## Durable Decisions'
+  ],
+  'execution-guidance.md': [
+    '## Invariants',
+    '## Product Invariants',
+    '## Drift Guards',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Durable Decisions',
+    '## Slice Backlog',
+    '## Handoff Notes'
+  ]
+};
 
 export type GenerateDocsInput = {
   prdPath?: string;
@@ -124,7 +143,7 @@ export async function generateDocs({
     validateGeneratedDocShape('pipeline.md', REQUIRED_DOC_HEADINGS['pipeline.md'] ?? [], pipelineMdContent);
     log?.('pipeline.md done');
   } else {
-    pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections);
+    pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName);
   }
 
   // Derive decisions.md via AI when provider and prdPath are both present.
@@ -251,6 +270,14 @@ export function validateGeneratedDocShape(
   if (missingHeadings.length > 0) {
     throw new GenerationError(
       `generated ${fileName} is missing required sections: ${missingHeadings.join(', ')}`
+    );
+  }
+
+  const forbiddenHeadings = FORBIDDEN_DOC_HEADINGS[fileName] ?? [];
+  const presentForbiddenHeadings = forbiddenHeadings.filter((heading) => documentText.includes(heading));
+  if (presentForbiddenHeadings.length > 0) {
+    throw new GenerationError(
+      `generated ${fileName} contains forbidden sections: ${presentForbiddenHeadings.join(', ')}`
     );
   }
 }
@@ -518,6 +545,8 @@ function renderSystemDocCli(
 }
 
 function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('pipeline.md');
+
   return [
     `You are generating a RAES pipeline.md for a software project.`,
     ``,
@@ -527,19 +556,15 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
     prdText,
     ``,
     `Generate a complete RAES pipeline.md document containing ALL of the following headings in order:`,
-    `## Purpose`,
-    `## Invariants`,
-    `## Known Contracts`,
-    `## Unknowns`,
     `## Slice Backlog`,
     `## Handoff Notes`,
     ``,
     `Under ## Slice Backlog, include at least one unchecked slice entry in the format:`,
     `- [ ] Slice N: <description>`,
     ``,
-    `Under ## Invariants, include ### Product Invariants and ### Drift Guards subsections.`,
-    ``,
     `Under ## Handoff Notes, output only the heading with no content beneath it. Handoff notes are written by slice execution, not at init time.`,
+    ``,
+    forbiddenHeadingRule,
     ``,
     `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
@@ -569,19 +594,22 @@ function buildDecisionsPrompt(prdText: string, todayDate: string): string {
 }
 
 function buildExecutionGuidancePrompt(prdText: string): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('execution-guidance.md');
+
   return [
     `You are generating a RAES execution-guidance.md for a software project.`,
     ``,
     `PRD:`,
     prdText,
     ``,
-    `Derive invariants, workflow rules, anti-patterns, and definition of done grounded in the PRD constraints.`,
+    `Derive workflow rules, anti-patterns, and definition of done grounded in the PRD constraints.`,
     `Generate a complete RAES execution-guidance.md document containing ALL of the following headings in order:`,
-    `## Invariants`,
     `## Workflow Rules`,
     `## Anti-Patterns`,
     `## Definition of Done`,
     `## Milestone Guidance`,
+    ``,
+    forbiddenHeadingRule,
     ``,
     `Under ## Milestone Guidance, include one ### subsection per milestone derived from the PRD. Each subsection should capture: key implementation considerations, sequencing rationale, and what the executing team should know before beginning that milestone. Base this entirely on the PRD — do not fabricate milestone structure not present in the PRD.`,
     ``,
@@ -591,63 +619,21 @@ function buildExecutionGuidancePrompt(prdText: string): string {
   ].join('\n');
 }
 
-function renderPipelineDoc(
-  archetype: SupportedArchetype,
-  projectName: string,
-  prdTitle: string,
-  prdSections: PrdSections
-): string {
+function renderPipelineDoc(archetype: SupportedArchetype, projectName: string): string {
+  // pipeline.md intentionally carries only execution ordering state (slice backlog + handoff notes).
+  // Product constraints, invariants, and contracts remain owned by system.md per RAES artifact boundaries.
   if (archetype === 'frontend-backend-ai-app') {
-    return renderPipelineDocFrontendBackendAiApp(projectName, prdTitle, prdSections);
+    return renderPipelineDocFrontendBackendAiApp(projectName);
   }
   if (archetype === 'cli') {
-    return renderPipelineDocCli(projectName, prdTitle, prdSections);
+    return renderPipelineDocCli(projectName);
   }
-  return renderPipelineDocCliDocGenerator(projectName, prdTitle, prdSections);
+  return renderPipelineDocCliDocGenerator(projectName);
 }
 
-function renderPipelineDocCliDocGenerator(
-  projectName: string,
-  prdTitle: string,
-  prdSections: PrdSections
-): string {
-  const knownContracts = renderBullets(prdSections.coreFunctionality, [
-    'The project should use the PRD as the source of truth for generated docs.'
-  ]);
-  const unknowns = renderBullets(prdSections.openQuestions, [
-    'How much validation should happen before generation.',
-    'How far PRD adaptation should go in later slices.'
-  ]);
-
+function renderPipelineDocCliDocGenerator(projectName: string): string {
   return [
     `# ${projectName} — pipeline.md`,
-    '',
-    '## Purpose',
-    '',
-    `This pipeline defines the initial execution path for \`${projectName}\` based on the PRD \`${prdTitle}\`.`,
-    '',
-    '## Invariants',
-    '',
-    '### Product Invariants',
-    '',
-    '- Output must be readable markdown.',
-    '- Output must stay editable by humans.',
-    '- Unknowns remain visible instead of being fabricated.',
-    '',
-    '### Drift Guards',
-    '',
-    '- One slice per session.',
-    '- Tests first.',
-    '- Minimum implementation only.',
-    '- No overwrite behavior in V1.',
-    '',
-    '## Known Contracts',
-    '',
-    knownContracts,
-    '',
-    '## Unknowns',
-    '',
-    unknowns,
     '',
     '## Slice Backlog',
     '',
@@ -664,54 +650,9 @@ function renderPipelineDocCliDocGenerator(
   ].join('\n');
 }
 
-function renderPipelineDocFrontendBackendAiApp(
-  projectName: string,
-  prdTitle: string,
-  prdSections: PrdSections
-): string {
-  const knownContracts = renderBullets(prdSections.coreFunctionality, [
-    'Frontend ↔ backend boundary must be explicit.',
-    'AI interaction occurs through a backend adapter layer.',
-    'Request and response shapes are stable once introduced.'
-  ]);
-  const unknowns = renderBullets(prdSections.openQuestions, [
-    'Model and provider selection.',
-    'Streaming vs non-streaming response behavior.',
-    'Retry and fallback behavior.',
-    'UX around loading, partial output, and failure states.'
-  ]);
-
+function renderPipelineDocFrontendBackendAiApp(projectName: string): string {
   return [
     `# ${projectName} — pipeline.md`,
-    '',
-    '## Purpose',
-    '',
-    `This pipeline defines the execution path for \`${projectName}\` based on the PRD \`${prdTitle}\`.`,
-    '',
-    '## Invariants',
-    '',
-    '### Product Invariants',
-    '',
-    '- The core user flow must remain intact unless explicitly changed.',
-    '- The frontend should remain legible even when AI behavior is variable.',
-    '- AI interaction should support the product loop rather than redefine it.',
-    '',
-    '### Drift Guards',
-    '',
-    '- One slice per session.',
-    '- Tests before implementation.',
-    '- Shared types are the source of truth for data exchanged across boundaries.',
-    '- Do not couple the UI directly to provider-specific payloads.',
-    '- Do not use live AI calls in deterministic tests by default.',
-    '- Stop after slice completion.',
-    '',
-    '## Known Contracts',
-    '',
-    knownContracts,
-    '',
-    '## Unknowns',
-    '',
-    unknowns,
     '',
     '## Slice Backlog',
     '',
@@ -736,56 +677,9 @@ function renderPipelineDocFrontendBackendAiApp(
   ].join('\n');
 }
 
-function renderPipelineDocCli(
-  projectName: string,
-  prdTitle: string,
-  prdSections: PrdSections
-): string {
-  const knownContracts = renderBullets(prdSections.coreFunctionality, [
-    'Configuration file path and schema must be explicit before execution begins.',
-    'Exit code assignments are a contract — record them when introduced.',
-    'External system adapter boundary must be explicit.',
-    'State file write behavior must be defined before implementation.'
-  ]);
-  const unknowns = renderBullets(prdSections.openQuestions, [
-    'Exact configuration schema and required keys.',
-    'Retry and timeout behavior for external calls.',
-    'Partial failure detection and recovery strategy.',
-    'Logging verbosity and output format.'
-  ]);
-
+function renderPipelineDocCli(projectName: string): string {
   return [
     `# ${projectName} — pipeline.md`,
-    '',
-    '## Purpose',
-    '',
-    `This pipeline defines the execution path for \`${projectName}\` based on the PRD \`${prdTitle}\`.`,
-    '',
-    '## Invariants',
-    '',
-    '### Product Invariants',
-    '',
-    '- The tool must behave predictably given the same configuration and state.',
-    '- Configuration validation must complete before any side effects begin.',
-    '- The tool must exit with a non-zero code on any failure.',
-    '- Partial state mutations must be detectable and recoverable.',
-    '',
-    '### Drift Guards',
-    '',
-    '- One slice per session.',
-    '- Tests before implementation.',
-    '- Command parsing, business logic, and I/O remain separate layers.',
-    '- Exit codes are a contract — record them in `decisions.md` when introduced.',
-    '- Do not use live external calls in deterministic tests by default.',
-    '- Stop after slice completion.',
-    '',
-    '## Known Contracts',
-    '',
-    knownContracts,
-    '',
-    '## Unknowns',
-    '',
-    unknowns,
     '',
     '## Slice Backlog',
     '',
@@ -838,10 +732,6 @@ function renderDecisionsDoc(projectName: string): string {
 function renderExecutionGuidanceDoc(projectName: string): string {
   return [
     `# ${projectName} — execution-guidance.md`,
-    '',
-    '## Invariants',
-    '',
-    '_Project-specific invariants go here._',
     '',
     '## Workflow Rules',
     '',
@@ -1133,4 +1023,28 @@ function deriveCliUxRisks(prdSections: PrdSections): string[] {
 function renderBullets(items: string[], fallbackItems: string[]): string {
   const values = items.length > 0 ? items : fallbackItems;
   return values.map((item) => `- ${item}`).join('\n');
+}
+
+function renderForbiddenHeadingsRule(fileName: string): string {
+  const headings = FORBIDDEN_DOC_HEADINGS[fileName] ?? [];
+  if (headings.length === 0) {
+    return 'Do not include headings that belong to other artifacts.';
+  }
+  return `Do not include headings that belong to other artifacts such as ${formatAsOrList(headings)}.`;
+}
+
+function formatAsOrList(items: string[]): string {
+  if (items.length === 0) {
+    return '';
+  }
+  if (items.length === 1) {
+    return items[0];
+  }
+  if (items.length === 2) {
+    return `${items[0]} or ${items[1]}`;
+  }
+
+  const allExceptLast = items.slice(0, -1).join(', ');
+  const last = items[items.length - 1];
+  return `${allExceptLast}, or ${last}`;
 }

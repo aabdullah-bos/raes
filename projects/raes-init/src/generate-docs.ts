@@ -545,6 +545,8 @@ function renderSystemDocCli(
 }
 
 function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('pipeline.md');
+
   return [
     `You are generating a RAES pipeline.md for a software project.`,
     ``,
@@ -562,7 +564,7 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
     ``,
     `Under ## Handoff Notes, output only the heading with no content beneath it. Handoff notes are written by slice execution, not at init time.`,
     ``,
-    `Do not include headings that belong to other artifacts such as ## Purpose, ## Invariants, ## Product Invariants, ## Drift Guards, ## Known Contracts, ## Unknowns, ## Workflow Rules, ## Anti-Patterns, or ## Durable Decisions.`,
+    forbiddenHeadingRule,
     ``,
     `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
@@ -592,6 +594,8 @@ function buildDecisionsPrompt(prdText: string, todayDate: string): string {
 }
 
 function buildExecutionGuidancePrompt(prdText: string): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('execution-guidance.md');
+
   return [
     `You are generating a RAES execution-guidance.md for a software project.`,
     ``,
@@ -605,7 +609,7 @@ function buildExecutionGuidancePrompt(prdText: string): string {
     `## Definition of Done`,
     `## Milestone Guidance`,
     ``,
-    `Do not include headings that belong to other artifacts such as ## Invariants, ## Product Invariants, ## Drift Guards, ## Known Contracts, ## Unknowns, ## Durable Decisions, ## Slice Backlog, or ## Handoff Notes.`,
+    forbiddenHeadingRule,
     ``,
     `Under ## Milestone Guidance, include one ### subsection per milestone derived from the PRD. Each subsection should capture: key implementation considerations, sequencing rationale, and what the executing team should know before beginning that milestone. Base this entirely on the PRD — do not fabricate milestone structure not present in the PRD.`,
     ``,
@@ -1022,4 +1026,25 @@ function deriveCliUxRisks(prdSections: PrdSections): string[] {
 function renderBullets(items: string[], fallbackItems: string[]): string {
   const values = items.length > 0 ? items : fallbackItems;
   return values.map((item) => `- ${item}`).join('\n');
+}
+
+function renderForbiddenHeadingsRule(fileName: string): string {
+  const headings = FORBIDDEN_DOC_HEADINGS[fileName] ?? [];
+  if (headings.length === 0) {
+    return 'Do not include headings that belong to other artifacts.';
+  }
+  return `Do not include headings that belong to other artifacts such as ${toConjunctionList(headings)}.`;
+}
+
+function toConjunctionList(items: string[]): string {
+  if (items.length === 1) {
+    return items[0] ?? '';
+  }
+  if (items.length === 2) {
+    return `${items[0]} or ${items[1]}`;
+  }
+
+  const allExceptLast = items.slice(0, -1).join(', ');
+  const last = items[items.length - 1];
+  return `${allExceptLast}, or ${last}`;
 }

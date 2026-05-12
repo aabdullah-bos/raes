@@ -69,7 +69,11 @@ test('generates the RAES docs set for the narrow happy path', async () => {
   const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
   assert.match(pipelineText, /# sample-widget/);
   assert.match(pipelineText, /## Slice Backlog/);
+  assert.match(pipelineText, /## Handoff Notes/);
   assert.match(pipelineText, /\[ \] Slice 1/);
+  assert.doesNotMatch(pipelineText, /## Invariants/);
+  assert.doesNotMatch(pipelineText, /## Known Contracts/);
+  assert.doesNotMatch(pipelineText, /## Unknowns/);
 
   const decisionsText = await readFile(join(docsDir, 'decisions.md'), 'utf8');
   assert.match(decisionsText, /# sample-widget/);
@@ -209,8 +213,6 @@ test('adapts PRD sections into project-specific constraints, known contracts, an
   const systemProductInvariants = sectionBody(systemText, 'Product Invariants');
   const systemKnownContracts = sectionBody(systemText, 'Known Contracts');
   const systemUnknowns = sectionBody(systemText, 'Unknowns');
-  const pipelineKnownContracts = sectionBody(pipelineText, 'Known Contracts');
-  const pipelineUnknowns = sectionBody(pipelineText, 'Unknowns');
   const reviewOpenQuestions = sectionBody(reviewText, 'Open Questions');
 
   assert.match(systemProductInvariants, /must only support the cli-doc-generator archetype in V1/);
@@ -218,9 +220,11 @@ test('adapts PRD sections into project-specific constraints, known contracts, an
   assert.match(systemUnknowns, /Should future versions accept inline PRD text/);
   assert.doesNotMatch(systemKnownContracts, /Should future versions accept inline PRD text/);
 
-  assert.match(pipelineKnownContracts, /Validate required manifest fields before generation/);
-  assert.match(pipelineUnknowns, /How much normalization should PRD.md apply/);
-  assert.doesNotMatch(pipelineKnownContracts, /How much normalization should PRD.md apply/);
+  assert.match(pipelineText, /## Slice Backlog/);
+  assert.match(pipelineText, /\[ \] Slice 1/);
+  assert.doesNotMatch(pipelineText, /## Known Contracts/);
+  assert.doesNotMatch(pipelineText, /## Unknowns/);
+  assert.doesNotMatch(pipelineText, /How much normalization should PRD.md apply/);
 
   assert.match(reviewOpenQuestions, /Should future versions accept inline PRD text/);
 });
@@ -252,13 +256,40 @@ test('fails clearly when a generated doc shape omits required sections', () => {
     () =>
       validateGeneratedDocShape(
         'pipeline.md',
-        ['## Purpose', '## Invariants', '## Known Contracts'],
-        ['# sample-project — pipeline.md', '', '## Purpose', '', 'narrow pipeline'].join('\n')
+        ['## Slice Backlog', '## Handoff Notes'],
+        ['# sample-project — pipeline.md', '', '## Slice Backlog', '', '- [ ] Slice 1: narrow pipeline'].join(
+          '\n'
+        )
       ),
     {
       name: 'Error',
       message:
-        'generated pipeline.md is missing required sections: ## Invariants, ## Known Contracts'
+        'generated pipeline.md is missing required sections: ## Handoff Notes'
+    }
+  );
+});
+
+test('fails clearly when a generated doc contains forbidden sections', () => {
+  assert.throws(
+    () =>
+      validateGeneratedDocShape(
+        'pipeline.md',
+        ['## Slice Backlog', '## Handoff Notes'],
+        [
+          '# sample-project — pipeline.md',
+          '',
+          '## Slice Backlog',
+          '',
+          '- [ ] Slice 1: narrow pipeline',
+          '',
+          '## Handoff Notes',
+          '',
+          '## Invariants'
+        ].join('\n')
+      ),
+    {
+      name: 'Error',
+      message: 'generated pipeline.md contains forbidden sections: ## Invariants'
     }
   );
 });
@@ -302,11 +333,11 @@ test('generates execution-guidance.md with required sections', async () => {
 
   const guidanceText = await readFile(join(targetProject, 'docs', 'execution-guidance.md'), 'utf8');
   assert.match(guidanceText, /# guidance-check-tool/);
-  assert.match(guidanceText, /## Invariants/);
   assert.match(guidanceText, /## Workflow Rules/);
   assert.match(guidanceText, /## Anti-Patterns/);
   assert.match(guidanceText, /## Definition of Done/);
   assert.match(guidanceText, /## Milestone Guidance/);
+  assert.doesNotMatch(guidanceText, /## Invariants/);
   assert.match(guidanceText, /### Constraint Promotion/);
   assert.match(guidanceText, /### Emergent Work/);
   assert.match(guidanceText, /system\.md/);
@@ -518,28 +549,6 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
   const mockPipelineContent = [
     '# AI Pipeline Tool — pipeline.md',
     '',
-    '## Purpose',
-    '',
-    'AI-derived purpose from PRD.',
-    '',
-    '## Invariants',
-    '',
-    '### Product Invariants',
-    '',
-    '- AI-derived invariant.',
-    '',
-    '### Drift Guards',
-    '',
-    '- One slice per session.',
-    '',
-    '## Known Contracts',
-    '',
-    '- Do a thing.',
-    '',
-    '## Unknowns',
-    '',
-    '- TBD.',
-    '',
     '## Slice Backlog',
     '',
     '### Milestone 1',
@@ -563,10 +572,6 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
 
   const mockExecutionGuidanceContent = [
     '# AI Pipeline Tool — execution-guidance.md',
-    '',
-    '## Invariants',
-    '',
-    '- Output must be readable markdown.',
     '',
     '## Workflow Rules',
     '',
@@ -615,6 +620,12 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
   assert.equal(pipelineText, mockPipelineContent);
   assert.match(capturedPipelinePrompt, /AI Pipeline Tool/);
   assert.match(capturedPipelinePrompt, /cli-doc-generator/);
+  assert.match(capturedPipelinePrompt, /## Slice Backlog/);
+  assert.match(capturedPipelinePrompt, /## Handoff Notes/);
+  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Invariants(?:\n|$)/);
+  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Known Contracts(?:\n|$)/);
+  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Unknowns(?:\n|$)/);
+  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Purpose(?:\n|$)/);
   assert.equal(callCount, 3);
 });
 
@@ -732,22 +743,6 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   const mockPipelineContent = [
     '# AI Decisions Tool — pipeline.md',
     '',
-    '## Purpose',
-    '',
-    'Pipeline purpose.',
-    '',
-    '## Invariants',
-    '',
-    '- Invariant.',
-    '',
-    '## Known Contracts',
-    '',
-    '- Process user input.',
-    '',
-    '## Unknowns',
-    '',
-    '- TBD.',
-    '',
     '## Slice Backlog',
     '',
     '- [ ] Slice 1: Initial implementation.',
@@ -769,10 +764,6 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
 
   const mockExecutionGuidanceContent = [
     '# AI Decisions Tool — execution-guidance.md',
-    '',
-    '## Invariants',
-    '',
-    '- Output must be valid markdown.',
     '',
     '## Workflow Rules',
     '',
@@ -826,6 +817,11 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   assert.match(capturedDecisionsPrompt, /AI Decisions Tool/);
   assert.match(capturedDecisionsPrompt, /\d{4}-\d{2}-\d{2}/);
   assert.match(capturedGuidancePrompt, /AI Decisions Tool/);
+  assert.match(capturedGuidancePrompt, /## Workflow Rules/);
+  assert.match(capturedGuidancePrompt, /## Anti-Patterns/);
+  assert.match(capturedGuidancePrompt, /## Definition of Done/);
+  assert.match(capturedGuidancePrompt, /## Milestone Guidance/);
+  assert.doesNotMatch(capturedGuidancePrompt, /(?:^|\n)## Invariants(?:\n|$)/);
   assert.equal(callCount, 3);
 
   // validation.md is still a stub
@@ -843,22 +839,6 @@ test('rejects AI decisions.md missing required headings before any writes', asyn
 
   const validPipelineContent = [
     '# Bad AI Decisions Tool — pipeline.md',
-    '',
-    '## Purpose',
-    '',
-    'Purpose.',
-    '',
-    '## Invariants',
-    '',
-    '- Invariant.',
-    '',
-    '## Known Contracts',
-    '',
-    '- Contract.',
-    '',
-    '## Unknowns',
-    '',
-    '- TBD.',
     '',
     '## Slice Backlog',
     '',
@@ -904,22 +884,6 @@ test('rejects AI execution-guidance.md missing required headings before any writ
 
   const validPipelineContent = [
     '# Bad AI Guidance Tool — pipeline.md',
-    '',
-    '## Purpose',
-    '',
-    'Purpose.',
-    '',
-    '## Invariants',
-    '',
-    '- Invariant.',
-    '',
-    '## Known Contracts',
-    '',
-    '- Contract.',
-    '',
-    '## Unknowns',
-    '',
-    '- TBD.',
     '',
     '## Slice Backlog',
     '',
@@ -1096,9 +1060,13 @@ test('generates the RAES docs set for the cli archetype', async () => {
   const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
   assert.match(pipelineText, /# raes-execute/);
   assert.match(pipelineText, /## Slice Backlog/);
+  assert.match(pipelineText, /## Handoff Notes/);
   assert.match(pipelineText, /\[ \] Slice 1/);
   assert.match(pipelineText, /Milestone 1/);
   assert.match(pipelineText, /Milestone 5/);
+  assert.doesNotMatch(pipelineText, /## Invariants/);
+  assert.doesNotMatch(pipelineText, /## Known Contracts/);
+  assert.doesNotMatch(pipelineText, /## Unknowns/);
 
   const reviewText = await readFile(join(docsDir, 'prd-ux-review.md'), 'utf8');
   assert.match(reviewText, /# raes-execute/);
@@ -1119,8 +1087,7 @@ test('emits progress messages for AI-backed --from-prd generation', async () => 
 
   const mockPipelineContent = [
     '# Progress Tool — pipeline.md',
-    '', '## Purpose', '', 'Pipeline.', '', '## Invariants', '', '- Invariant.',
-    '', '## Known Contracts', '', '- Contract.', '', '## Unknowns', '', '- TBD.',
+    '',
     '', '## Slice Backlog', '', '- [ ] Slice 1: Initial implementation.',
     '', '## Handoff Notes', ''
   ].join('\n');
@@ -1132,7 +1099,7 @@ test('emits progress messages for AI-backed --from-prd generation', async () => 
 
   const mockExecutionGuidanceContent = [
     '# Progress Tool — execution-guidance.md',
-    '', '## Invariants', '', '- Invariant.', '', '## Workflow Rules', '', '- Rule.',
+    '', '## Workflow Rules', '', '- Rule.',
     '', '## Anti-Patterns', '', '- Anti.', '', '## Definition of Done', '', '- Done.',
     '', '## Milestone Guidance', '', '### Milestone 1', '', '- Guidance.', ''
   ].join('\n');

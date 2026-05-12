@@ -5,7 +5,6 @@ import { readFile } from 'node:fs/promises';
 const REQUIRED_HEADINGS: Record<string, string[]> = {
   'execution-guidance.md': [
     '# raes-init',
-    '## Invariants',
     '## Workflow Rules',
     '## Anti-Patterns',
     '## Definition of Done',

@@ -1030,10 +1030,10 @@ function renderForbiddenHeadingsRule(fileName: string): string {
   if (headings.length === 0) {
     return 'Do not include headings that belong to other artifacts.';
   }
-  return `Do not include headings that belong to other artifacts such as ${toOrList(headings)}.`;
+  return `Do not include headings that belong to other artifacts such as ${formatAsOrList(headings)}.`;
 }
 
-function toOrList(items: string[]): string {
+function formatAsOrList(items: string[]): string {
   if (items.length === 0) {
     return '';
   }

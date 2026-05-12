@@ -17,7 +17,7 @@ function sectionBody(documentText: string, heading: string): string {
   return parts[1].split('\n## ')[0];
 }
 
-function assertDoesNotContainHeadingLines(documentText: string, headings: string[]): void {
+function assertDoesNotContainExactHeadingLines(documentText: string, headings: string[]): void {
   const lines = documentText.split('\n');
   for (const heading of headings) {
     assert.equal(lines.includes(heading), false, `unexpected heading line: ${heading}`);
@@ -629,7 +629,7 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
   assert.match(capturedPipelinePrompt, /cli-doc-generator/);
   assert.match(capturedPipelinePrompt, /## Slice Backlog/);
   assert.match(capturedPipelinePrompt, /## Handoff Notes/);
-  assertDoesNotContainHeadingLines(capturedPipelinePrompt, [
+  assertDoesNotContainExactHeadingLines(capturedPipelinePrompt, [
     '## Invariants',
     '## Known Contracts',
     '## Unknowns',
@@ -830,7 +830,7 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   assert.match(capturedGuidancePrompt, /## Anti-Patterns/);
   assert.match(capturedGuidancePrompt, /## Definition of Done/);
   assert.match(capturedGuidancePrompt, /## Milestone Guidance/);
-  assertDoesNotContainHeadingLines(capturedGuidancePrompt, ['## Invariants']);
+  assertDoesNotContainExactHeadingLines(capturedGuidancePrompt, ['## Invariants']);
   assert.equal(callCount, 3);
 
   // validation.md is still a stub

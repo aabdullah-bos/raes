@@ -32,7 +32,7 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
     '## Handoff Notes'
   ],
   'decisions.md': ['## Durable Decisions'],
-  'prd-ux-review.md': ['## Purpose', '## Observed Requirements', '## UX Risks', '## Open Questions'],
+  'prd-ux-review.md': ['## UX Gaps', '## Open Questions', '## Findings'],
   'execution-guidance.md': [
     '## Workflow Rules',
     '## Anti-Patterns',
@@ -46,6 +46,18 @@ const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
 export class GenerationError extends Error {}
 
 const FORBIDDEN_DOC_HEADINGS: Record<string, string[]> = {
+  'system.md': [
+    '## Goals',
+    '## User Stories',
+    '## Functional Requirements',
+    '## Durable Decisions',
+    '## Slice Backlog',
+    '## Handoff Notes',
+    '## Workflow Rules',
+    '## Milestone Guidance',
+    '## Testing Approach',
+    '## Validation Commands'
+  ],
   'pipeline.md': [
     '## Purpose',
     '## Invariants',
@@ -57,6 +69,32 @@ const FORBIDDEN_DOC_HEADINGS: Record<string, string[]> = {
     '## Anti-Patterns',
     '## Durable Decisions'
   ],
+  'decisions.md': [
+    '## Invariants',
+    '## Product Invariants',
+    '## Workflow Rules',
+    '## Anti-Patterns',
+    '## Slice Backlog',
+    '## Goals',
+    '## Functional Requirements'
+  ],
+  'prd-ux-review.md': [
+    '## Purpose',
+    '## Observed Requirements',
+    '## UX Risks',
+    '## Product Invariants',
+    '## Drift Guards',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Workflow Rules',
+    '## Anti-Patterns',
+    '## Definition of Done',
+    '## Durable Decisions',
+    '## Slice Backlog',
+    '## Handoff Notes',
+    '## Testing Approach',
+    '## Validation Commands'
+  ],
   'execution-guidance.md': [
     '## Invariants',
     '## Product Invariants',
@@ -66,6 +104,14 @@ const FORBIDDEN_DOC_HEADINGS: Record<string, string[]> = {
     '## Durable Decisions',
     '## Slice Backlog',
     '## Handoff Notes'
+  ],
+  'validation.md': [
+    '## Invariants',
+    '## Product Invariants',
+    '## Workflow Rules',
+    '## Anti-Patterns',
+    '## Durable Decisions',
+    '## Slice Backlog'
   ]
 };
 
@@ -133,6 +179,17 @@ export async function generateDocs({
   const prdTitle = extractPrdTitle(prdText, projectName);
   const prdSections = extractPrdSections(prdText);
 
+  let systemMdContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating system.md...');
+    const prompt = buildSystemPrompt(prdText, resolvedArchetype);
+    systemMdContent = await provider.complete(prompt);
+    validateGeneratedDocShape('system.md', REQUIRED_DOC_HEADINGS['system.md'] ?? [], systemMdContent);
+    log?.('system.md done');
+  } else {
+    systemMdContent = renderSystemDoc(resolvedArchetype, projectName, prdTitle, prdSections);
+  }
+
   // Derive pipeline.md via AI when provider and prdPath are both present.
   // Shape guard runs here so validation fails before any writes.
   let pipelineMdContent: string;
@@ -160,6 +217,17 @@ export async function generateDocs({
     decisionsMdContent = renderDecisionsDoc(projectName);
   }
 
+  let prdUxReviewContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating prd-ux-review.md...');
+    const prompt = buildPrdUxReviewPrompt(prdText, resolvedArchetype);
+    prdUxReviewContent = await provider.complete(prompt);
+    validateGeneratedDocShape('prd-ux-review.md', REQUIRED_DOC_HEADINGS['prd-ux-review.md'] ?? [], prdUxReviewContent);
+    log?.('prd-ux-review.md done');
+  } else {
+    prdUxReviewContent = renderPrdUxReview(resolvedArchetype, projectName, prdTitle, prdSections);
+  }
+
   // Derive execution-guidance.md via AI when provider and prdPath are both present.
   // Shape guard runs here so validation fails before any writes.
   let executionGuidanceMdContent: string;
@@ -173,14 +241,25 @@ export async function generateDocs({
     executionGuidanceMdContent = renderExecutionGuidanceDoc(projectName);
   }
 
+  let validationMdContent: string;
+  if (provider !== undefined && prdPath !== undefined) {
+    log?.('Generating validation.md...');
+    const prompt = buildValidationPrompt(prdText, resolvedArchetype);
+    validationMdContent = await provider.complete(prompt);
+    validateGeneratedDocShape('validation.md', REQUIRED_DOC_HEADINGS['validation.md'] ?? [], validationMdContent);
+    log?.('validation.md done');
+  } else {
+    validationMdContent = renderValidationDoc(projectName);
+  }
+
   const generatedContent = new Map<string, string>([
     ['prd.md', prdText],
-    ['system.md', renderSystemDoc(resolvedArchetype, projectName, prdTitle, prdSections)],
+    ['system.md', systemMdContent],
     ['pipeline.md', pipelineMdContent],
     ['decisions.md', decisionsMdContent],
-    ['prd-ux-review.md', renderPrdUxReview(resolvedArchetype, projectName, prdTitle, prdSections)],
+    ['prd-ux-review.md', prdUxReviewContent],
     ['execution-guidance.md', executionGuidanceMdContent],
-    ['validation.md', renderValidationDoc(projectName)],
+    ['validation.md', validationMdContent],
     ['raes.config.yaml', renderRaesConfig(projectName)]
   ]);
 
@@ -572,22 +651,86 @@ function buildPipelinePrompt(prdText: string, archetype: SupportedArchetype): st
   ].join('\n');
 }
 
+function buildSystemPrompt(prdText: string, archetype: SupportedArchetype): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('system.md');
+
+  return [
+    `You are generating a RAES system.md for a software project.`,
+    ``,
+    `Archetype: ${archetype}`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `system.md is the RAES execution-constraints artifact. It defines what must remain true across future slices.`,
+    `Generate a complete RAES system.md document containing ALL of the following headings in order:`,
+    `## Purpose`,
+    `## Product Invariants`,
+    `## Drift Guards`,
+    `## Known Contracts`,
+    `## Unknowns`,
+    `## Anti-Patterns`,
+    `## Definition of Done`,
+    ``,
+    forbiddenHeadingRule,
+    ``,
+    `Derive only durable execution constraints, contracts, unknowns, and completion criteria that are clearly supported by the PRD.`,
+    `Do not restate product goals, backlog planning, workflow rules, decision rationale, or validation commands in this artifact.`,
+    `Do not fabricate requirements not present in the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
+  ].join('\n');
+}
+
 function buildDecisionsPrompt(prdText: string, todayDate: string): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('decisions.md');
+
   return [
     `You are generating a RAES decisions.md for a software project.`,
     ``,
     `PRD:`,
     prdText,
     ``,
-    `Extract non-negotiable constraints, technology choices, and durable rules from the PRD as RAES decision entries.`,
+    `decisions.md is the RAES rationale audit trail. It records durable choices and why they were made.`,
     `Generate a complete RAES decisions.md document containing the following heading:`,
     `## Durable Decisions`,
     ``,
     `Under ## Durable Decisions, include a markdown table with columns: Decision | Rationale | Date.`,
-    `Each row should capture one durable decision grounded in the PRD.`,
+    `Each row should capture one durable technology choice, tradeoff, or adoption decision grounded in the PRD.`,
     `Use ${todayDate} as the date for all decision entries.`,
     ``,
+    forbiddenHeadingRule,
+    ``,
+    `Do not restate product constraints or invariants that belong in system.md.`,
+    `Do not turn workflow rules, backlog planning, or validation guidance into decision entries.`,
     `Do not fabricate decisions not supported by the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
+  ].join('\n');
+}
+
+function buildPrdUxReviewPrompt(prdText: string, archetype: SupportedArchetype): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('prd-ux-review.md');
+
+  return [
+    `You are generating a RAES prd-ux-review.md for a software project.`,
+    ``,
+    `Archetype: ${archetype}`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `prd-ux-review.md is a bootstrap-only artifact. It surfaces UX ambiguity from the PRD before the first execution slice begins.`,
+    `Generate a complete RAES prd-ux-review.md document containing ALL of the following headings in order:`,
+    `## UX Gaps`,
+    `## Open Questions`,
+    `## Findings`,
+    ``,
+    forbiddenHeadingRule,
+    ``,
+    `Use this artifact only to surface ambiguity, risk, and notable UX findings from the PRD.`,
+    `Do not include operational execution guidance, backlog planning, testing guidance, durable decisions, or system constraints.`,
+    `Do not fabricate findings not supported by the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
     `Output only the markdown document with no preamble or explanation.`
   ].join('\n');
@@ -614,6 +757,33 @@ function buildExecutionGuidancePrompt(prdText: string): string {
     `Under ## Milestone Guidance, include one ### subsection per milestone derived from the PRD. Each subsection should capture: key implementation considerations, sequencing rationale, and what the executing team should know before beginning that milestone. Base this entirely on the PRD — do not fabricate milestone structure not present in the PRD.`,
     ``,
     `Do not fabricate guidance not supported by the PRD. Base all content on the PRD above.`,
+    `Start the document with a # heading using the project name derived from the PRD title.`,
+    `Output only the markdown document with no preamble or explanation.`
+  ].join('\n');
+}
+
+function buildValidationPrompt(prdText: string, archetype: SupportedArchetype): string {
+  const forbiddenHeadingRule = renderForbiddenHeadingsRule('validation.md');
+
+  return [
+    `You are generating a RAES validation.md for a software project.`,
+    ``,
+    `Archetype: ${archetype}`,
+    ``,
+    `PRD:`,
+    prdText,
+    ``,
+    `validation.md is the RAES verification artifact. It captures how correctness will be checked.`,
+    `Generate a complete RAES validation.md document containing ALL of the following headings in order:`,
+    `## Testing Approach`,
+    `## Validation Commands`,
+    `## Known Constraints`,
+    ``,
+    forbiddenHeadingRule,
+    ``,
+    `Derive only testing strategy, candidate validation commands, and validation-specific constraints supported by the PRD.`,
+    `Do not restate workflow rules, backlog planning, durable decisions, or product invariants in this artifact.`,
+    `Do not fabricate commands or constraints not supported by the PRD. Base all content on the PRD above.`,
     `Start the document with a # heading using the project name derived from the PRD title.`,
     `Output only the markdown document with no preamble or explanation.`
   ].join('\n');
@@ -749,14 +919,12 @@ function renderExecutionGuidanceDoc(projectName: string): string {
     '',
     '| Classification | Criteria | Action |',
     '|----------------|----------|--------|',
-    '| **Inline Fix** | <5 lines, no interface touched | Do it now; note in handoff. No Parking Lot entry. |',
-    '| **New Slice** | More lines or touches a contract; fits current milestone | Add Parking Lot entry. Promote at REVIEW. |',
-    '| **New Milestone** | Out of scope; 3–8 slices to complete | Add Parking Lot entry. Stub a new milestone at REVIEW. |',
-    '| **Sub-Project** | 5+ slices, own constraints and unknowns | Add Parking Lot entry. Create a subdirectory with its own `pipeline.md`. |',
+    '| **Inline Fix** | <5 lines, no interface touched | Do it now; note in handoff. |',
+    '| **New Slice** | More lines or touches a contract; fits current milestone | Flag it at REVIEW for backlog approval. |',
+    '| **New Milestone** | Out of scope; 3–8 slices to complete | Flag it at REVIEW for milestone-level sequencing. |',
+    '| **Sub-Project** | 5+ slices, own constraints and unknowns | Flag it at REVIEW for separate planning and ownership. |',
     '',
     'If Blocking = Yes: stop the current slice and raise at REVIEW. The next slice does not start until the item is promoted or dismissed.',
-    '',
-    'Add all non-inline items to the `## Parking Lot` table in `pipeline.md`.',
     '',
     '## Anti-Patterns',
     '',
@@ -824,10 +992,10 @@ function renderPrdUxReviewCliDocGenerator(
   prdTitle: string,
   prdSections: PrdSections
 ): string {
-  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
+  const findings = renderBullets(prdSections.coreFunctionality, [
     'The PRD should remain the source of truth for operator expectations.'
   ]);
-  const uxRisks = renderBullets(deriveCliUxRisks(prdSections), [
+  const uxGaps = renderBullets(deriveCliUxRisks(prdSections), [
     'Users may not know what happens when docs already exist at the target path.',
     'The scope of supported input modes may be unclear if the CLI surface expands early.'
   ]);
@@ -839,21 +1007,19 @@ function renderPrdUxReviewCliDocGenerator(
   return [
     `# ${projectName} — prd-ux-review.md`,
     '',
-    '## Purpose',
+    '## UX Gaps',
     '',
-    `This review captures ambiguity and operator risk for \`${projectName}\` based on \`${prdTitle}\`.`,
-    '',
-    '## Observed Requirements',
-    '',
-    observedRequirements,
-    '',
-    '## UX Risks',
-    '',
-    uxRisks,
+    uxGaps,
     '',
     '## Open Questions',
     '',
     openQuestions,
+    '',
+    '## Findings',
+    '',
+    `This review captures ambiguity and operator risk for \`${projectName}\` based on \`${prdTitle}\`.`,
+    '',
+    findings,
     ''
   ].join('\n');
 }
@@ -863,10 +1029,10 @@ function renderPrdUxReviewFrontendBackendAiApp(
   prdTitle: string,
   prdSections: PrdSections
 ): string {
-  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
+  const findings = renderBullets(prdSections.coreFunctionality, [
     'The PRD should remain the source of truth for user-facing behavior.'
   ]);
-  const uxRisks = renderBullets(deriveProductUxRisks(prdSections), [
+  const uxGaps = renderBullets(deriveProductUxRisks(prdSections), [
     'Users need legible feedback when AI output is delayed, partial, or absent.',
     'Transitions between loading, success, and failure states must be predictable.',
     'Variable AI output may violate user expectations if not constrained by the product flow.'
@@ -880,21 +1046,19 @@ function renderPrdUxReviewFrontendBackendAiApp(
   return [
     `# ${projectName} — prd-ux-review.md`,
     '',
-    '## Purpose',
+    '## UX Gaps',
     '',
-    `This review captures ambiguity and user-facing risk for \`${projectName}\` based on \`${prdTitle}\`.`,
-    '',
-    '## Observed Requirements',
-    '',
-    observedRequirements,
-    '',
-    '## UX Risks',
-    '',
-    uxRisks,
+    uxGaps,
     '',
     '## Open Questions',
     '',
     openQuestions,
+    '',
+    '## Findings',
+    '',
+    `This review captures ambiguity and user-facing risk for \`${projectName}\` based on \`${prdTitle}\`.`,
+    '',
+    findings,
     ''
   ].join('\n');
 }
@@ -904,10 +1068,10 @@ function renderPrdUxReviewCli(
   prdTitle: string,
   prdSections: PrdSections
 ): string {
-  const observedRequirements = renderBullets(prdSections.coreFunctionality, [
+  const findings = renderBullets(prdSections.coreFunctionality, [
     'The PRD should remain the source of truth for operator-facing behavior.'
   ]);
-  const uxRisks = renderBullets(deriveCliToolUxRisks(prdSections), [
+  const uxGaps = renderBullets(deriveCliToolUxRisks(prdSections), [
     'Operators need a clear failure message when configuration is invalid or missing.',
     'Exit codes must be documented and consistent across all failure modes.',
     'Partial state mutations must be detectable — the operator must know whether to retry or recover.'
@@ -921,21 +1085,19 @@ function renderPrdUxReviewCli(
   return [
     `# ${projectName} — prd-ux-review.md`,
     '',
-    '## Purpose',
+    '## UX Gaps',
     '',
-    `This review captures operator experience ambiguity and risk for \`${projectName}\` based on \`${prdTitle}\`.`,
-    '',
-    '## Observed Requirements',
-    '',
-    observedRequirements,
-    '',
-    '## UX Risks',
-    '',
-    uxRisks,
+    uxGaps,
     '',
     '## Open Questions',
     '',
     openQuestions,
+    '',
+    '## Findings',
+    '',
+    `This review captures operator experience ambiguity and risk for \`${projectName}\` based on \`${prdTitle}\`.`,
+    '',
+    findings,
     ''
   ].join('\n');
 }

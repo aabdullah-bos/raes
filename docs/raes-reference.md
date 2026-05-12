@@ -515,6 +515,8 @@ When work surfaces that was not planned, classify it immediately:
 
 ### Parking Lot
 
+**Status note (2026-05-12):** Parking Lot semantics are deferred for tooling contracts. For `raes-init` and other artifact-shape enforcement work, Sections 3 and 3a remain authoritative until this section is reconciled with the file-boundary contract in a later review slice. Tooling should not require or emit a `## Parking Lot` section based on this section alone.
+
 A `## Parking Lot` section lives in `pipeline.md`, after all milestones. It holds a table of emergent items not yet promoted into the active backlog. At each REVIEW step, the operator promotes items (converts them to slice entries in the appropriate milestone) or dismisses them with a one-line note. Dismissed items remain in the table so the decision is visible.
 
 ### Sub-Projects

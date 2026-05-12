@@ -2,6 +2,13 @@
 
 ## Durable Decisions
 
+### 2026-05-12 — Parking Lot semantics are deferred from the `raes-init` artifact contract
+
+- Sections 3 and 3a of `docs/raes-reference.md` remain the authoritative artifact-boundary contract for `raes-init`.
+- The later Parking Lot language in `docs/raes-reference.md` conflicts with that contract because it adds a `pipeline.md` section not defined in Section 3a.
+- Until the shared RAES contract is reconciled, `raes-init` generation and fallback guidance must not require or emit Parking Lot content.
+- The Parking Lot concept remains an open shared-methodology question to resolve in a later review slice.
+
 ### 2026-04-08 — V1 uses a narrow file-based happy path
 
 - The initial supported input mode is one readable PRD markdown file path.

@@ -24,14 +24,12 @@ When work is discovered during a slice that was not in the plan, classify it imm
 
 | Classification | Criteria | Action |
 |----------------|----------|--------|
-| **Inline Fix** | <5 lines, no interface touched | Do it now; note in handoff. No Parking Lot entry. |
-| **New Slice** | More lines or touches a contract; fits current milestone | Add Parking Lot entry. Promote at REVIEW. |
-| **New Milestone** | Out of scope; 3–8 slices to complete | Add Parking Lot entry. Stub a new milestone at REVIEW. |
-| **Sub-Project** | 5+ slices, own constraints and unknowns | Add Parking Lot entry. Create a subdirectory with its own `pipeline.md`. |
+| **Inline Fix** | <5 lines, no interface touched | Do it now; note in handoff. |
+| **New Slice** | More lines or touches a contract; fits current milestone | Flag it at REVIEW for backlog approval. |
+| **New Milestone** | Out of scope; 3–8 slices to complete | Flag it at REVIEW for milestone-level sequencing. |
+| **Sub-Project** | 5+ slices, own constraints and unknowns | Flag it at REVIEW for separate planning and ownership. |
 
 If Blocking = Yes: stop the current slice and raise at REVIEW. The next slice does not start until the item is promoted or dismissed.
-
-Add all non-inline items to the `## Parking Lot` table in `pipeline.md`.
 
 ### Execution Rules
 

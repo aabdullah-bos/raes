@@ -88,7 +88,12 @@ test('generates the RAES docs set for the narrow happy path', async () => {
 
   const reviewText = await readFile(join(docsDir, 'prd-ux-review.md'), 'utf8');
   assert.match(reviewText, /# sample-widget/);
+  assert.match(reviewText, /## UX Gaps/);
+  assert.match(reviewText, /## Findings/);
   assert.match(reviewText, /## Open Questions/);
+  assert.doesNotMatch(reviewText, /## Purpose/);
+  assert.doesNotMatch(reviewText, /## Observed Requirements/);
+  assert.doesNotMatch(reviewText, /## UX Risks/);
 });
 
 test('rejects unsupported archetypes without writing files', async () => {
@@ -301,6 +306,37 @@ test('fails clearly when a generated doc contains forbidden sections', () => {
   );
 });
 
+test('fails clearly when prd-ux-review.md contains forbidden sections', () => {
+  assert.throws(
+    () =>
+      validateGeneratedDocShape(
+        'prd-ux-review.md',
+        ['## UX Gaps', '## Open Questions', '## Findings'],
+        [
+          '# sample-project — prd-ux-review.md',
+          '',
+          '## UX Gaps',
+          '',
+          '- Gap.',
+          '',
+          '## Open Questions',
+          '',
+          '- Question.',
+          '',
+          '## Findings',
+          '',
+          '- Finding.',
+          '',
+          '## Workflow Rules'
+        ].join('\n')
+      ),
+    {
+      name: 'Error',
+      message: 'generated prd-ux-review.md contains forbidden sections: ## Workflow Rules'
+    }
+  );
+});
+
 test('generates raes.config.yaml with required source keys pointing to correct paths', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
   const sourcePrd = join(tempRoot, 'source-prd.md');
@@ -349,9 +385,9 @@ test('generates execution-guidance.md with required sections', async () => {
   assert.match(guidanceText, /### Emergent Work/);
   assert.match(guidanceText, /system\.md/);
   assert.match(guidanceText, /decisions\.md/);
-  assert.match(guidanceText, /Parking Lot/);
   assert.match(guidanceText, /Inline Fix/);
   assert.match(guidanceText, /Blocking = Yes/);
+  assert.doesNotMatch(guidanceText, /Parking Lot/);
 });
 
 test('generates validation.md with required sections', async () => {
@@ -507,13 +543,16 @@ test('derives CLI-oriented UX risks and open questions from PRD workflow failure
   });
 
   const reviewText = await readFile(join(targetProject, 'docs', 'prd-ux-review.md'), 'utf8');
-  const uxRisks = sectionBody(reviewText, 'UX Risks');
+  const uxGaps = sectionBody(reviewText, 'UX Gaps');
   const openQuestions = sectionBody(reviewText, 'Open Questions');
+  const findings = sectionBody(reviewText, 'Findings');
 
-  assert.match(uxRisks, /provided file path cannot be read/);
-  assert.match(uxRisks, /validation blocks generation/);
-  assert.match(uxRisks, /existing docs already exist at the target path/);
+  assert.match(uxGaps, /provided file path cannot be read/);
+  assert.match(uxGaps, /validation blocks generation/);
+  assert.match(uxGaps, /existing docs already exist at the target path/);
   assert.match(openQuestions, /Should PRD headings be normalized before copying/);
+  assert.match(findings, /operator risk/i);
+  assert.match(findings, /Accept a source PRD markdown file path/);
 });
 
 test('generates all 8 files for the frontend-backend-ai-app archetype', async () => {
@@ -566,6 +605,39 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
     ''
   ].join('\n');
 
+  const mockSystemContent = [
+    '# AI Pipeline Tool — system.md',
+    '',
+    '## Purpose',
+    '',
+    '- Purpose.',
+    '',
+    '## Product Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Drift Guards',
+    '',
+    '- Guard.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- Unknown.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Anti-pattern.',
+    '',
+    '## Definition of Done',
+    '',
+    '- Done.',
+    ''
+  ].join('\n');
+
   const mockDecisionsContent = [
     '# AI Pipeline Tool — decisions.md',
     '',
@@ -600,19 +672,62 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
     ''
   ].join('\n');
 
+  const mockPrdUxReviewContent = [
+    '# AI Pipeline Tool — prd-ux-review.md',
+    '',
+    '## UX Gaps',
+    '',
+    '- Gap.',
+    '',
+    '## Open Questions',
+    '',
+    '- Question.',
+    '',
+    '## Findings',
+    '',
+    '- Finding.',
+    ''
+  ].join('\n');
+
+  const mockValidationContent = [
+    '# AI Pipeline Tool — validation.md',
+    '',
+    '## Testing Approach',
+    '',
+    '- Test.',
+    '',
+    '## Validation Commands',
+    '',
+    '- npm test',
+    '',
+    '## Known Constraints',
+    '',
+    '- Constraint.',
+    ''
+  ].join('\n');
+
   let callCount = 0;
   let capturedPipelinePrompt = '';
   const mockProvider = {
     async complete(prompt: string): Promise<string> {
       callCount += 1;
       if (callCount === 1) {
+        return mockSystemContent;
+      }
+      if (callCount === 2) {
         capturedPipelinePrompt = prompt;
         return mockPipelineContent;
       }
-      if (callCount === 2) {
+      if (callCount === 3) {
         return mockDecisionsContent;
       }
-      return mockExecutionGuidanceContent;
+      if (callCount === 4) {
+        return mockPrdUxReviewContent;
+      }
+      if (callCount === 5) {
+        return mockExecutionGuidanceContent;
+      }
+      return mockValidationContent;
     }
   };
 
@@ -635,7 +750,7 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
     '## Unknowns',
     '## Purpose'
   ]);
-  assert.equal(callCount, 3);
+  assert.equal(callCount, 6);
 });
 
 test('rejects AI pipeline.md missing required headings before any writes', async () => {
@@ -645,8 +760,46 @@ test('rejects AI pipeline.md missing required headings before any writes', async
 
   await writeFile(sourcePrd, '# Bad AI Pipeline Tool\n', 'utf8');
 
+  const validSystemContent = [
+    '# Bad AI Pipeline Tool — system.md',
+    '',
+    '## Purpose',
+    '',
+    '- Purpose.',
+    '',
+    '## Product Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Drift Guards',
+    '',
+    '- Guard.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- Unknown.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Anti-pattern.',
+    '',
+    '## Definition of Done',
+    '',
+    '- Done.',
+    ''
+  ].join('\n');
+
+  let callCount = 0;
   const mockProvider = {
     async complete(_prompt: string): Promise<string> {
+      callCount += 1;
+      if (callCount === 1) {
+        return validSystemContent;
+      }
       return '# Bad Output\n\nMissing required headings.\n';
     }
   };
@@ -760,6 +913,39 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
     ''
   ].join('\n');
 
+  const mockSystemContent = [
+    '# AI Decisions Tool — system.md',
+    '',
+    '## Purpose',
+    '',
+    '- Purpose.',
+    '',
+    '## Product Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Drift Guards',
+    '',
+    '- Guard.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- Unknown.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Anti-pattern.',
+    '',
+    '## Definition of Done',
+    '',
+    '- Done.',
+    ''
+  ].join('\n');
+
   const mockDecisionsContent = [
     '# AI Decisions Tool — decisions.md',
     '',
@@ -794,19 +980,60 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
     ''
   ].join('\n');
 
+  const mockPrdUxReviewContent = [
+    '# AI Decisions Tool — prd-ux-review.md',
+    '',
+    '## UX Gaps',
+    '',
+    '- Gap.',
+    '',
+    '## Open Questions',
+    '',
+    '- Question.',
+    '',
+    '## Findings',
+    '',
+    '- Finding.',
+    ''
+  ].join('\n');
+
+  const mockValidationContent = [
+    '# AI Decisions Tool — validation.md',
+    '',
+    '## Testing Approach',
+    '',
+    '- Test.',
+    '',
+    '## Validation Commands',
+    '',
+    '- npm test',
+    '',
+    '## Known Constraints',
+    '',
+    '- Constraint.',
+    ''
+  ].join('\n');
+
   let callCount = 0;
   let capturedDecisionsPrompt = '';
   let capturedGuidancePrompt = '';
   const mockProvider = {
     async complete(prompt: string): Promise<string> {
       callCount += 1;
-      if (callCount === 1) return mockPipelineContent;
-      if (callCount === 2) {
+      if (callCount === 1) return mockSystemContent;
+      if (callCount === 2) return mockPipelineContent;
+      if (callCount === 3) {
         capturedDecisionsPrompt = prompt;
         return mockDecisionsContent;
       }
-      capturedGuidancePrompt = prompt;
-      return mockExecutionGuidanceContent;
+      if (callCount === 4) {
+        return mockPrdUxReviewContent;
+      }
+      if (callCount === 5) {
+        capturedGuidancePrompt = prompt;
+        return mockExecutionGuidanceContent;
+      }
+      return mockValidationContent;
     }
   };
 
@@ -825,18 +1052,18 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   assert.equal(guidanceText, mockExecutionGuidanceContent);
   assert.match(capturedDecisionsPrompt, /AI Decisions Tool/);
   assert.match(capturedDecisionsPrompt, /\d{4}-\d{2}-\d{2}/);
+  assert.match(capturedDecisionsPrompt, /rationale audit trail/i);
+  assert.match(capturedDecisionsPrompt, /Do not restate product constraints or invariants/);
   assert.match(capturedGuidancePrompt, /AI Decisions Tool/);
   assert.match(capturedGuidancePrompt, /## Workflow Rules/);
   assert.match(capturedGuidancePrompt, /## Anti-Patterns/);
   assert.match(capturedGuidancePrompt, /## Definition of Done/);
   assert.match(capturedGuidancePrompt, /## Milestone Guidance/);
   assertDoesNotContainExactHeadingLines(capturedGuidancePrompt, ['## Invariants']);
-  assert.equal(callCount, 3);
+  assert.equal(callCount, 6);
 
-  // validation.md is still a stub
   const validationText = await readFile(join(docsDir, 'validation.md'), 'utf8');
-  assert.match(validationText, /## Testing Approach/);
-  assert.match(validationText, /## Validation Commands/);
+  assert.equal(validationText, mockValidationContent);
 });
 
 test('rejects AI decisions.md missing required headings before any writes', async () => {
@@ -845,6 +1072,39 @@ test('rejects AI decisions.md missing required headings before any writes', asyn
   const targetProject = join(tempRoot, 'bad-ai-decisions-tool');
 
   await writeFile(sourcePrd, '# Bad AI Decisions Tool\n', 'utf8');
+
+  const validSystemContent = [
+    '# Bad AI Decisions Tool — system.md',
+    '',
+    '## Purpose',
+    '',
+    '- Purpose.',
+    '',
+    '## Product Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Drift Guards',
+    '',
+    '- Guard.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- Unknown.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Anti-pattern.',
+    '',
+    '## Definition of Done',
+    '',
+    '- Done.',
+    ''
+  ].join('\n');
 
   const validPipelineContent = [
     '# Bad AI Decisions Tool — pipeline.md',
@@ -861,7 +1121,8 @@ test('rejects AI decisions.md missing required headings before any writes', asyn
   const mockProvider = {
     async complete(_prompt: string): Promise<string> {
       callCount += 1;
-      if (callCount === 1) return validPipelineContent;
+      if (callCount === 1) return validSystemContent;
+      if (callCount === 2) return validPipelineContent;
       return '# Bad Output\n\nMissing required headings.\n';
     }
   };
@@ -891,6 +1152,39 @@ test('rejects AI execution-guidance.md missing required headings before any writ
 
   await writeFile(sourcePrd, '# Bad AI Guidance Tool\n', 'utf8');
 
+  const validSystemContent = [
+    '# Bad AI Guidance Tool — system.md',
+    '',
+    '## Purpose',
+    '',
+    '- Purpose.',
+    '',
+    '## Product Invariants',
+    '',
+    '- Invariant.',
+    '',
+    '## Drift Guards',
+    '',
+    '- Guard.',
+    '',
+    '## Known Contracts',
+    '',
+    '- Contract.',
+    '',
+    '## Unknowns',
+    '',
+    '- Unknown.',
+    '',
+    '## Anti-Patterns',
+    '',
+    '- Anti-pattern.',
+    '',
+    '## Definition of Done',
+    '',
+    '- Done.',
+    ''
+  ].join('\n');
+
   const validPipelineContent = [
     '# Bad AI Guidance Tool — pipeline.md',
     '',
@@ -912,12 +1206,31 @@ test('rejects AI execution-guidance.md missing required headings before any writ
     ''
   ].join('\n');
 
+  const validPrdUxReviewContent = [
+    '# Bad AI Guidance Tool — prd-ux-review.md',
+    '',
+    '## UX Gaps',
+    '',
+    '- Gap.',
+    '',
+    '## Open Questions',
+    '',
+    '- Question.',
+    '',
+    '## Findings',
+    '',
+    '- Finding.',
+    ''
+  ].join('\n');
+
   let callCount = 0;
   const mockProvider = {
     async complete(_prompt: string): Promise<string> {
       callCount += 1;
-      if (callCount === 1) return validPipelineContent;
-      if (callCount === 2) return validDecisionsContent;
+      if (callCount === 1) return validSystemContent;
+      if (callCount === 2) return validPipelineContent;
+      if (callCount === 3) return validDecisionsContent;
+      if (callCount === 4) return validPrdUxReviewContent;
       return '# Bad Output\n\nMissing required headings.\n';
     }
   };
@@ -1113,13 +1426,41 @@ test('emits progress messages for AI-backed --from-prd generation', async () => 
     '', '## Milestone Guidance', '', '### Milestone 1', '', '- Guidance.', ''
   ].join('\n');
 
+  const mockSystemContent = [
+    '# Progress Tool — system.md',
+    '', '## Purpose', '', '- Purpose.',
+    '', '## Product Invariants', '', '- Invariant.',
+    '', '## Drift Guards', '', '- Guard.',
+    '', '## Known Contracts', '', '- Contract.',
+    '', '## Unknowns', '', '- Unknown.',
+    '', '## Anti-Patterns', '', '- Anti-pattern.',
+    '', '## Definition of Done', '', '- Done.', ''
+  ].join('\n');
+
+  const mockPrdUxReviewContent = [
+    '# Progress Tool — prd-ux-review.md',
+    '', '## UX Gaps', '', '- Gap.',
+    '', '## Open Questions', '', '- Question.',
+    '', '## Findings', '', '- Finding.', ''
+  ].join('\n');
+
+  const mockValidationContent = [
+    '# Progress Tool — validation.md',
+    '', '## Testing Approach', '', '- Test.',
+    '', '## Validation Commands', '', '- npm test',
+    '', '## Known Constraints', '', '- Constraint.', ''
+  ].join('\n');
+
   let callCount = 0;
   const mockProvider = {
     async complete(_prompt: string): Promise<string> {
       callCount += 1;
-      if (callCount === 1) return mockPipelineContent;
-      if (callCount === 2) return mockDecisionsContent;
-      return mockExecutionGuidanceContent;
+      if (callCount === 1) return mockSystemContent;
+      if (callCount === 2) return mockPipelineContent;
+      if (callCount === 3) return mockDecisionsContent;
+      if (callCount === 4) return mockPrdUxReviewContent;
+      if (callCount === 5) return mockExecutionGuidanceContent;
+      return mockValidationContent;
     }
   };
 
@@ -1132,12 +1473,18 @@ test('emits progress messages for AI-backed --from-prd generation', async () => 
     log: (msg) => logMessages.push(msg)
   });
 
+  assert(logMessages.includes('Generating system.md...'), 'should log before system AI call');
+  assert(logMessages.includes('system.md done'), 'should log after system AI call');
   assert(logMessages.includes('Generating pipeline.md...'), 'should log before pipeline AI call');
   assert(logMessages.includes('pipeline.md done'), 'should log after pipeline AI call');
   assert(logMessages.includes('Generating decisions.md...'), 'should log before decisions AI call');
   assert(logMessages.includes('decisions.md done'), 'should log after decisions AI call');
+  assert(logMessages.includes('Generating prd-ux-review.md...'), 'should log before review AI call');
+  assert(logMessages.includes('prd-ux-review.md done'), 'should log after review AI call');
   assert(logMessages.includes('Generating execution-guidance.md...'), 'should log before guidance AI call');
   assert(logMessages.includes('execution-guidance.md done'), 'should log after guidance AI call');
+  assert(logMessages.includes('Generating validation.md...'), 'should log before validation AI call');
+  assert(logMessages.includes('validation.md done'), 'should log after validation AI call');
 
   assert(logMessages.some((m) => m.startsWith('Writing docs to')), 'should log before writes');
   assert(logMessages.includes('  prd.md'), 'should log prd.md write');

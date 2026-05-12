@@ -17,6 +17,13 @@ function sectionBody(documentText: string, heading: string): string {
   return parts[1].split('\n## ')[0];
 }
 
+function assertDoesNotContainHeadingLines(documentText: string, headings: string[]): void {
+  const lines = documentText.split('\n');
+  for (const heading of headings) {
+    assert.equal(lines.includes(heading), false, `unexpected heading line: ${heading}`);
+  }
+}
+
 test('generates the RAES docs set for the narrow happy path', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'raes-init-'));
   const sourcePrd = join(tempRoot, 'source-prd.md');
@@ -622,10 +629,12 @@ test('uses provider output for pipeline.md when provider and prdPath are both se
   assert.match(capturedPipelinePrompt, /cli-doc-generator/);
   assert.match(capturedPipelinePrompt, /## Slice Backlog/);
   assert.match(capturedPipelinePrompt, /## Handoff Notes/);
-  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Invariants(?:\n|$)/);
-  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Known Contracts(?:\n|$)/);
-  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Unknowns(?:\n|$)/);
-  assert.doesNotMatch(capturedPipelinePrompt, /(?:^|\n)## Purpose(?:\n|$)/);
+  assertDoesNotContainHeadingLines(capturedPipelinePrompt, [
+    '## Invariants',
+    '## Known Contracts',
+    '## Unknowns',
+    '## Purpose'
+  ]);
   assert.equal(callCount, 3);
 });
 
@@ -821,7 +830,7 @@ test('uses provider output for decisions.md and execution-guidance.md when provi
   assert.match(capturedGuidancePrompt, /## Anti-Patterns/);
   assert.match(capturedGuidancePrompt, /## Definition of Done/);
   assert.match(capturedGuidancePrompt, /## Milestone Guidance/);
-  assert.doesNotMatch(capturedGuidancePrompt, /(?:^|\n)## Invariants(?:\n|$)/);
+  assertDoesNotContainHeadingLines(capturedGuidancePrompt, ['## Invariants']);
   assert.equal(callCount, 3);
 
   // validation.md is still a stub

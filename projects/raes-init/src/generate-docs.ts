@@ -143,7 +143,7 @@ export async function generateDocs({
     validateGeneratedDocShape('pipeline.md', REQUIRED_DOC_HEADINGS['pipeline.md'] ?? [], pipelineMdContent);
     log?.('pipeline.md done');
   } else {
-    pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName, prdTitle, prdSections);
+    pipelineMdContent = renderPipelineDoc(resolvedArchetype, projectName);
   }
 
   // Derive decisions.md via AI when provider and prdPath are both present.
@@ -619,12 +619,9 @@ function buildExecutionGuidancePrompt(prdText: string): string {
   ].join('\n');
 }
 
-function renderPipelineDoc(
-  archetype: SupportedArchetype,
-  projectName: string,
-  _prdTitle: string,
-  _prdSections: PrdSections
-): string {
+function renderPipelineDoc(archetype: SupportedArchetype, projectName: string): string {
+  // pipeline.md intentionally carries only execution ordering state (slice backlog + handoff notes).
+  // Product constraints, invariants, and contracts remain owned by system.md per RAES artifact boundaries.
   if (archetype === 'frontend-backend-ai-app') {
     return renderPipelineDocFrontendBackendAiApp(projectName);
   }
@@ -1033,12 +1030,15 @@ function renderForbiddenHeadingsRule(fileName: string): string {
   if (headings.length === 0) {
     return 'Do not include headings that belong to other artifacts.';
   }
-  return `Do not include headings that belong to other artifacts such as ${toConjunctionList(headings)}.`;
+  return `Do not include headings that belong to other artifacts such as ${toOrList(headings)}.`;
 }
 
-function toConjunctionList(items: string[]): string {
+function toOrList(items: string[]): string {
+  if (items.length === 0) {
+    return '';
+  }
   if (items.length === 1) {
-    return items[0] ?? '';
+    return items[0];
   }
   if (items.length === 2) {
     return `${items[0]} or ${items[1]}`;

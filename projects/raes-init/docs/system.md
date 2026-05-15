@@ -11,8 +11,11 @@ This document defines the project rules for `raes-init`.
 - `pipeline.md`
 - `decisions.md`
 - `prd-ux-review.md`
+- `execution-guidance.md`
+- `validation.md`
+- `raes.config.yaml`
 
-For V1, the default execution shape is the `cli-doc-generator` archetype. The system should adapt that archetype to the input PRD rather than copy template text mechanically.
+The default execution shape is the `cli-doc-generator` archetype. The system should adapt that archetype to the input PRD rather than copy template text mechanically.
 
 ---
 

@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readFileSync, rmSync } from 'node:fs';
 import { runReviewLoop } from '../src/review-loop.ts';
-import type { RaesSummaryData } from '../src/output-summary.ts';
 import type { Provider, ProviderHooks, ProviderProgressEvent } from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 
@@ -30,49 +29,6 @@ const VALID_ARTIFACTS: Record<string, string> = {
   'docs/execution-guidance.md': '# RAES Execute: Execution Guidance\n\n## Invariants\n1. Keep boundaries.\n',
   'docs/validation.md': '# raes-execute — validation.md\n\n## Testing Approach\n- Test\n',
 };
-
-const VALID_SUMMARY: RaesSummaryData = {
-  slice: {
-    label: 'Slice 1: Review the execution loop',
-    type: 'review',
-    pipeline: { path: 'docs/pipeline.md', line: 3 },
-    position: 1,
-  },
-  artifactsInspected: [
-    { path: 'docs/prd.md', line: 1 },
-    { path: 'docs/pipeline.md', line: 3 },
-  ],
-  repoInspection: [],
-  plan: [],
-  testsAddedOrUpdated: [],
-  implementationChanges: [],
-  findings: [
-    { text: 'Review summaries can be rendered deterministically from a tagged JSON block.' },
-  ],
-  validation: ['npm test'],
-  gaps: ['Malformed summaries still fall back to raw output.'],
-  artifactsProduced: ['Updated docs/pipeline.md handoff notes.'],
-  flags: ['No blocking guidance conflict found.'],
-  nextRecommendedSlice: {
-    label: 'Slice 2: Follow-on review',
-    path: 'docs/pipeline.md',
-    line: 6,
-    reason: 'It remains the next unchecked slice.',
-  },
-};
-
-function makeTaggedSummaryJson(overrides: Partial<RaesSummaryData> = {}): string {
-  const summary = {
-    ...VALID_SUMMARY,
-    ...overrides,
-  };
-  return [
-    'Freeform prose before summary.',
-    'RAES_SUMMARY_START',
-    JSON.stringify(summary, null, 2),
-    'RAES_SUMMARY_END',
-  ].join('\n');
-}
 
 async function makeProject(pipelineContent = VALID_ARTIFACTS['docs/pipeline.md']): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'raes-review-loop-'));
@@ -310,103 +266,6 @@ test('runReviewLoop: provider error exits 2 without writing', async () => {
     assert.ok(err.includes('fix: run provider login'));
     const pipeline = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
     assert.ok(pipeline.includes('- [ ] Slice 1: Review the execution loop'));
-  } finally {
-    rmSync(dir, { recursive: true });
-  }
-});
-
-test('runReviewLoop: renders parsed RAES summary instead of raw output when tagged summary is valid', async () => {
-  const dir = await makeProject();
-  try {
-    const out: string[] = [];
-    const result = await runReviewLoop(
-      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
-      VALID_CONFIG,
-      dir,
-      { out: (line) => out.push(line), err: () => {}, in: async () => 'n' },
-      {
-        provider: providerReturning({ output: makeTaggedSummaryJson() }),
-        loadPrompt: () => 'prompt text',
-      },
-    );
-    assert.equal(result.exitCode, 0);
-    assert.ok(out.includes('Current Slice'));
-    assert.ok(out.includes('Findings'));
-    assert.ok(out.includes('Next Recommended Slice'));
-    assert.ok(!out.includes('RAES_SUMMARY_START'));
-    assert.ok(!out.includes('RAES_SUMMARY_END'));
-    assert.ok(!out.includes('Freeform prose before summary.'));
-  } finally {
-    rmSync(dir, { recursive: true });
-  }
-});
-
-test('runReviewLoop: falls back to raw output when RAES summary is malformed', async () => {
-  const dir = await makeProject();
-  try {
-    const out: string[] = [];
-    const malformed = ['Freeform prose before summary.', 'RAES_SUMMARY_START', '{bad json}', 'RAES_SUMMARY_END'].join('\n');
-    const result = await runReviewLoop(
-      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
-      VALID_CONFIG,
-      dir,
-      { out: (line) => out.push(line), err: () => {}, in: async () => 'n' },
-      {
-        provider: providerReturning({ output: malformed }),
-        loadPrompt: () => 'prompt text',
-      },
-    );
-    assert.equal(result.exitCode, 0);
-    assert.ok(out.includes('Freeform prose before summary.'));
-    assert.ok(out.includes('RAES_SUMMARY_START'));
-    assert.ok(out.includes('{bad json}'));
-    assert.ok(!out.includes('Current Slice'));
-  } finally {
-    rmSync(dir, { recursive: true });
-  }
-});
-
-test('runReviewLoop: falls back to raw output when RAES summary is missing', async () => {
-  const dir = await makeProject();
-  try {
-    const out: string[] = [];
-    const result = await runReviewLoop(
-      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
-      VALID_CONFIG,
-      dir,
-      { out: (line) => out.push(line), err: () => {}, in: async () => 'n' },
-      {
-        provider: providerReturning({ output: 'plain raw output' }),
-        loadPrompt: () => 'prompt text',
-      },
-    );
-    assert.equal(result.exitCode, 0);
-    assert.ok(out.includes('plain raw output'));
-    assert.ok(!out.includes('Current Slice'));
-  } finally {
-    rmSync(dir, { recursive: true });
-  }
-});
-
-test('runReviewLoop: confirmation prompt still appears after rendered RAES summary', async () => {
-  const dir = await makeProject();
-  try {
-    const out: string[] = [];
-    const result = await runReviewLoop(
-      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
-      VALID_CONFIG,
-      dir,
-      { out: (line) => out.push(line), err: () => {}, in: async () => 'n' },
-      {
-        provider: providerReturning({ output: makeTaggedSummaryJson() }),
-        loadPrompt: () => 'prompt text',
-      },
-    );
-    assert.equal(result.exitCode, 0);
-    const nextSliceIndex = out.indexOf('Next Recommended Slice');
-    const promptIndex = out.indexOf('Agent output shown above. Record this slice as complete? [y/N]');
-    assert.ok(nextSliceIndex >= 0);
-    assert.ok(promptIndex > nextSliceIndex);
   } finally {
     rmSync(dir, { recursive: true });
   }

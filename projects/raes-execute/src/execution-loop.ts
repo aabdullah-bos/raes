@@ -5,7 +5,6 @@ import type { RaesConfig } from './config.ts';
 import type { Slice } from './pipeline.ts';
 import { writeFileAtomic } from './io.ts';
 import { loadPrompt } from './prompt.ts';
-import { parseRaesSummary, renderRaesSummary } from './output-summary.ts';
 import { createProgressRenderer, type ProgressVerbosity } from './progress-renderer.ts';
 import { createProvider, type Provider, type ProviderResult } from './provider.ts';
 import { runSlicePreflight } from './slice-preflight.ts';
@@ -26,17 +25,11 @@ interface ExecutionLoopDeps {
 }
 
 function writeFinalOutput(output: string, out: (line: string) => void): boolean {
-  const parsed = parseRaesSummary(output);
-  const lines = parsed
-    ? renderRaesSummary(parsed.summary)
-    : output.trim().length > 0
-      ? output.split('\n')
-      : [];
-  if (lines.length === 0) {
+  if (output.trim().length === 0) {
     out('[warning] Agent completed without any final summary output.');
     return false;
   }
-  for (const line of lines) {
+  for (const line of output.split('\n')) {
     out(line);
   }
   return true;

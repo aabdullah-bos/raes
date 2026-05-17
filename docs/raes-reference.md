@@ -350,7 +350,7 @@ Current status: not yet implemented. Design exists in RAES Brownfield PDF.
 
 Runs the next slice using `raes.config.yaml` as the source map. Reads the configured pipeline to find the first unchecked slice, loads execution guidance and durable decisions from their configured locations, and executes one slice following the rules appropriate for its slice type.
 
-Current status: not yet implemented. The canonical prompt (Section 6) is the manual equivalent of what this tool will automate.
+Current status: implemented in TypeScript at `projects/raes-execute/`. V1 includes config validation and path checks, artifact-boundary preflight, execution/review loop routing, provider integration, dry-run mode, and operator-confirmed slice completion. The canonical prompt remains the behavioral contract that this tool executes.
 
 ---
 
@@ -442,7 +442,7 @@ In either case:
 - stop immediately after completing the slice
 ```
 
-**Note on prompt evolution:** Existing prompt examples in `README.md` and `RAES_template.md` Section 6 use hardcoded document paths rather than config-based routing. These are earlier-generation prompts. The canonical form above supersedes them for projects that have a `raes.config.yaml`. For projects without one, inspect the repository for candidate artifacts and treat what you find as the available truth.
+**Note on prompt evolution:** For `raes-execute`, the operative runtime prompt is `projects/raes-execute/src/prompts/execution-loop.md`. The canonical form above captures shared RAES behavior and expected flow; when wording diverges, the runtime prompt governs actual tool behavior. Prompt examples in `README.md` and `RAES_template.md` Section 6 should be treated as legacy references for historical context, not execution authority for config-routed projects. For projects without `raes.config.yaml`, inspect the repository for candidate artifacts and treat what you find as available truth.
 
 ---
 
@@ -545,11 +545,9 @@ The schema was defined and implemented in an Execution Slice (2026-04-19). `raes
 
 ---
 
-**Gap 3: `raes-execute` is not implemented**
+**Gap 3: `raes-execute` is not implemented** ✓ Resolved 2026-05-17
 
-`raes-execute --next-slice` is described in Section 5 as the tool that automates what the canonical prompt currently does manually. It does not exist. Currently, operators copy and paste the canonical prompt (Section 6) into their AI tool of choice.
-
-*Dependency: Requires Gap 1 to be resolved first.*
+`raes-execute` now exists at `projects/raes-execute/` and supports single-slice execution via config-routed artifacts with execution/review loop handling, provider submission, boundary validation preflight, dry-run, and explicit operator confirmation before recording completion. The canonical prompt in Section 7 remains the shared behavioral contract; the runtime copy used by the tool lives in `projects/raes-execute/src/prompts/execution-loop.md`.
 
 ---
 

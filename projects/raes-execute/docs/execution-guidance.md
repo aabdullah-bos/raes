@@ -12,17 +12,17 @@
    - `--show-next-slice` must be called (or its output automatically shown on `--execute-next-slice` prompt) to confirm slice type, constraints, goal, acceptance criteria, and related files before human/agent commits to execution.
    - If the user or agent opts not to proceed, the slice remains unchecked; no partial state is recorded.
 
-3. **Execution Loop (for Implementation Slices)**
+3. **Execution Loop (for Execution Slices)**
    - Loop sequence: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
-   - CLI loads the slice definition and confirms its type is "implementation" or equivalent.
+   - CLI loads the slice definition and confirms its type is "execution" (legacy alias: "implementation").
    - CLI loads the canonical prompt and submits it to the configured provider; the provider executes the loop steps.
    - CLI enforces that only designated artifacts are modified for this slice.
    - Operator reviews provider output and confirms or declines recording completion.
    - Upon confirmation, CLI atomically updates artifacts and marks slice as checked.
 
-4. **Review Loop (for Review/Decision Slices)**
+4. **Review Loop (for Review Slices)**
    - Loop sequence: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
-   - CLI loads the slice definition and confirms its type is "review," "decision," or equivalent.
+   - CLI loads the slice definition and confirms its type is "review" (legacy alias: "decision").
    - CLI loads the canonical prompt and submits it to the configured provider; the provider executes the loop steps.
    - CLI enforces that review findings and decisions are recorded in decisions.md or appropriate artifact without mingling.
    - Operator reviews provider output and confirms or declines recording completion.
@@ -83,7 +83,7 @@
    - Correct approach: `--execute-next-slice` always shows the next slice details and waits for explicit proceed/halt confirmation before advancing.
 
 8. **Allowing Artifact Writes Outside Slice Scope**
-   - Anti-pattern: An implementation slice modifies a file not in its artifact list.
+   - Anti-pattern: An execution slice modifies a file not in its artifact list.
    - Correct approach: CLI validates artifact writes against the slice's declared boundary; unauthorized writes are rejected and flagged.
 
 ## Definition of Done
@@ -191,6 +191,6 @@ With navigation features in place, operators can inspect project state at any ti
 
 **Key Implementation Considerations**
 
-- **Execution Loop vs. Review Loop:** Implement logic to determine the next slice's type from config and invoke the appropriate loop (Execution for implementation, Review for decision/review slices). Each loop has different prompts, validation rules, and artifact updates; keep them modular and testable.
+- **Execution Loop vs. Review Loop:** Implement logic to determine the next slice's type from config and invoke the appropriate loop (Execution for Execution Slices, Review for Review Slices). Each loop has different prompts, validation rules, and artifact updates; keep them modular and testable.
 
-- **Execution Loop Details:** For implementation slices, walk the operator/agent through RAES execution loop steps: confirm constraints, elicit decisions, record evidence, and update only the designated artifact(s). Prompt for required inputs; do not allow empty responses for critical fields. Validate inputs against
+- **Execution Loop Details:** For execution slices, walk the operator/agent through RAES execution loop steps: confirm constraints, elicit decisions, record evidence, and update only the designated artifact(s). Prompt for required inputs; do not allow empty responses for critical fields. Validate inputs against

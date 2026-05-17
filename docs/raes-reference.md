@@ -245,7 +245,7 @@ PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 - Failing test written first
 - Minimum code passes the tests
 - Validation run (tests + typecheck)
-- Pipeline handoff notes appended
+- Pipeline handoff notes appended by agent; slice marked complete by the operator via the parent loop (raes-execute) or by the agent when DONE criteria are met (agent UI)
 - Decisions file updated if a new durable constraint was discovered
 
 ---
@@ -272,7 +272,7 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 - Authoritative artifacts inspected
 - Gaps identified explicitly (not inferred)
 - Next bounded slices proposed
-- Pipeline updated with this slice marked complete and next slice recommended
+- Pipeline handoff notes and next-slice recommendation appended by agent; slice marked complete by the operator via the parent loop (raes-execute) or by the agent when DONE criteria are met (agent UI)
 - No implementation code written
 
 ---
@@ -281,17 +281,20 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 > **RAES config should route execution to truth, not replace truth.**
 
-`raes.config.yaml` is a thin source map. It answers five questions for the agent:
+`raes.config.yaml` is a thin source map. It answers six questions for the agent:
 
 1. Where is build intent?
-2. Where is execution guidance?
-3. Where are durable decisions?
-4. How do I find the next slice?
-5. Where do I look for validation guidance?
+2. Where are the system-wide invariants, drift guards, and contracts?
+3. Where is execution guidance?
+4. Where are durable decisions?
+5. How do I find the next slice?
+6. Where do I look for validation guidance?
 
 **What belongs in config:** file paths to authoritative artifacts.
 
 **What does NOT belong in config:** the content of those artifacts. When new constraints emerge during execution, they are recorded in the project's existing truth artifacts — `pipeline.md` for slice progression and workflow guidance, `decisions.md` for durable choices that future slices must respect, `system.md` when the project has a stable project-wide rules document. RAES picks those constraints up on the next pass. This keeps config thin and prevents it from becoming a second documentation system.
+
+**Provider config:** `raes.config.yaml` also includes a `provider` block that tells `raes-execute` which AI provider and transport to use (e.g., `openai` with `app_server` transport). This block is consumed by `raes-execute` at startup and is invisible to the agent prompt — it is infrastructure config, not source routing.
 
 ### Artifact Boundary Rule
 
@@ -426,7 +429,7 @@ Rules:
 - identify concrete gaps explicitly — do not paper over them
 - do not duplicate what already exists — reference it
 - no implementation code
-- update pipeline with this slice marked complete and next slice recommended
+- append findings, handoff context, and next-slice recommendation to the pipeline; do not mark the slice complete in the backlog when run via raes-execute — slice completion is recorded by the parent loop after explicit operator confirmation; when run in an agent UI (e.g. Claude Code, Codex), mark the slice complete once DONE criteria are met
 - if the review produces durable guidance for future slices, add it to
   execution-guidance; if it is operational context for the immediate next
   slice only, add it to pipeline handoff notes

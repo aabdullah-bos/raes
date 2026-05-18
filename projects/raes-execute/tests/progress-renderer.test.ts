@@ -250,3 +250,70 @@ test('createProgressRenderer: debug keeps raw command details for read-heavy com
     '  exit: 0',
   ]);
 });
+
+test('createProgressRenderer: progress suppresses low-value copilot startup chatter and keeps meaningful milestones', () => {
+  const result = render([
+    { kind: 'status', text: 'MCP servers loaded', phase: 'unknown', eventType: 'session.mcp_servers_loaded' },
+    { kind: 'status', text: 'Skills loaded', phase: 'unknown', eventType: 'session.skills_loaded' },
+    { kind: 'status', text: 'Tools updated', phase: 'unknown', eventType: 'session.tools_updated' },
+    { kind: 'status', text: 'User message submitted', phase: 'item', eventType: 'user.message' },
+    { kind: 'status', text: 'MCP codex_apps ready', phase: 'unknown', eventType: 'session.mcp_server_status_changed' },
+    { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'assistant.turn_start' },
+    { kind: 'message', text: 'Implemented stream parsing.', phase: 'message', eventType: 'assistant.message' },
+  ], 'progress');
+
+  assert.deepEqual(result.err, []);
+  assert.deepEqual(result.out, [
+    '[status] MCP codex_apps ready',
+    '[status] Agent turn started',
+    '[message] Implemented stream parsing.',
+  ]);
+});
+
+test('createProgressRenderer: progress coalesces copilot reasoning and message deltas into concise summaries', () => {
+  const result = render([
+    { kind: 'message', text: 'Inspecting provider stream.', phase: 'reasoning', eventType: 'assistant.reasoning_delta', delta: 'Inspecting provider stream.' },
+    { kind: 'message', text: 'Mapping event contract.', phase: 'reasoning', eventType: 'assistant.reasoning_delta', delta: 'Mapping event contract.' },
+    { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: 'assistant.turn_start' },
+    { kind: 'message', text: 'Applying parser split.', phase: 'message', eventType: 'assistant.message_delta', delta: 'Applying parser split.' },
+    { kind: 'message', text: 'Adding fallback precedence.', phase: 'message', eventType: 'assistant.message_delta', delta: 'Adding fallback precedence.' },
+    { kind: 'status', text: 'Agent turn completed', phase: 'turn', eventType: 'assistant.turn_end' },
+  ], 'progress');
+
+  assert.deepEqual(result.err, []);
+  assert.deepEqual(result.out, [
+    '[reasoning] Inspecting provider stream. Mapping event contract.',
+    '[status] Agent turn started',
+    '[message] Applying parser split. Adding fallback precedence.',
+    '[status] Agent turn completed',
+  ]);
+});
+
+test('createProgressRenderer: progress summarizes copilot tool lifecycle using command context', () => {
+  const result = render([
+    {
+      kind: 'tool',
+      text: 'npm test',
+      phase: 'command',
+      eventType: 'tool.execution_start',
+      command: 'npm test',
+      item: { kind: 'command_execution', command: 'npm test', status: 'inProgress' },
+    },
+    {
+      kind: 'status',
+      text: 'npm test',
+      phase: 'command',
+      eventType: 'tool.execution_complete',
+      command: 'npm test',
+      item: { kind: 'command_execution', command: 'npm test', status: 'completed', exitCode: 0 },
+    },
+  ], 'progress');
+
+  assert.deepEqual(result.err, []);
+  assert.deepEqual(result.out, [
+    '[tool] npm test',
+    '  command: npm test',
+    '  status: completed',
+    '  exit: 0',
+  ]);
+});

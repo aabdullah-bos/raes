@@ -454,6 +454,163 @@ test('GitHubCopilotProvider: missing copilot binary returns structured error wit
   assert.match(result.fix ?? '', /PATH/i);
 });
 
+test('GitHubCopilotProvider: normalizes copilot streaming taxonomy events and uses result output as authoritative', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'session.mcp_server_status_changed', name: 'codex_apps', status: 'ready' }),
+    JSON.stringify({ type: 'session.mcp_servers_loaded' }),
+    JSON.stringify({ type: 'session.skills_loaded' }),
+    JSON.stringify({ type: 'session.tools_updated' }),
+    JSON.stringify({ type: 'user.message' }),
+    JSON.stringify({ type: 'assistant.turn_start' }),
+    JSON.stringify({ type: 'assistant.reasoning_delta', delta: { text: 'Inspecting provider wiring.' } }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: 'Implementing stream normalization.' } }),
+    JSON.stringify({ type: 'tool.execution_start', tool_name: 'npm test' }),
+    JSON.stringify({ type: 'tool.execution_complete', tool_name: 'npm test', status: 'completed', exitCode: 0 }),
+    JSON.stringify({ type: 'assistant.turn_end' }),
+    JSON.stringify({ type: 'result', result: { output_text: 'authoritative final output' } }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+
+  assert.equal(result.output, 'authoritative final output');
+  assert.deepEqual(events, [
+    {
+      kind: 'status',
+      text: 'MCP codex_apps ready',
+      phase: 'unknown',
+      eventType: 'session.mcp_server_status_changed',
+    },
+    {
+      kind: 'status',
+      text: 'MCP servers loaded',
+      phase: 'unknown',
+      eventType: 'session.mcp_servers_loaded',
+    },
+    {
+      kind: 'status',
+      text: 'Skills loaded',
+      phase: 'unknown',
+      eventType: 'session.skills_loaded',
+    },
+    {
+      kind: 'status',
+      text: 'Tools updated',
+      phase: 'unknown',
+      eventType: 'session.tools_updated',
+    },
+    {
+      kind: 'status',
+      text: 'User message submitted',
+      phase: 'item',
+      eventType: 'user.message',
+    },
+    {
+      kind: 'status',
+      text: 'Agent turn started',
+      phase: 'turn',
+      eventType: 'assistant.turn_start',
+    },
+    {
+      kind: 'message',
+      text: 'Inspecting provider wiring.',
+      phase: 'reasoning',
+      eventType: 'assistant.reasoning_delta',
+      delta: 'Inspecting provider wiring.',
+    },
+    {
+      kind: 'message',
+      text: 'Implementing stream normalization.',
+      phase: 'message',
+      eventType: 'assistant.message_delta',
+      delta: 'Implementing stream normalization.',
+    },
+    {
+      kind: 'tool',
+      text: 'npm test',
+      phase: 'command',
+      eventType: 'tool.execution_start',
+      command: 'npm test',
+      item: {
+        kind: 'command_execution',
+        command: 'npm test',
+        status: 'inProgress',
+      },
+    },
+    {
+      kind: 'status',
+      text: 'npm test',
+      phase: 'command',
+      eventType: 'tool.execution_complete',
+      command: 'npm test',
+      item: {
+        kind: 'command_execution',
+        command: 'npm test',
+        status: 'completed',
+        exitCode: 0,
+      },
+    },
+    {
+      kind: 'status',
+      text: 'Agent turn completed',
+      phase: 'turn',
+      eventType: 'assistant.turn_end',
+    },
+    {
+      kind: 'status',
+      text: 'Result received',
+      phase: 'turn',
+      eventType: 'result',
+    },
+  ]);
+});
+
+test('GitHubCopilotProvider: falls back to accumulated assistant messages when result has no usable output text', async () => {
+  const stdoutData = [
+    JSON.stringify({ type: 'assistant.turn_start' }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: 'Recovered from assistant message fallback.' } }),
+    JSON.stringify({ type: 'result', result: {} }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Recovered from assistant message fallback.');
+});
+
+test('GitHubCopilotProvider: returns fallback assistant output when stream ends without result event', async () => {
+  const stdoutData = [
+    JSON.stringify({ type: 'assistant.turn_start' }),
+    JSON.stringify({ type: 'assistant.message', text: 'Recovered from assistant.message when result event is absent.' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Recovered from assistant.message when result event is absent.');
+});
+
+test('GitHubCopilotProvider: emits diagnostic warning when result and fallback extraction both yield no output', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'assistant.turn_start' }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ' } }),
+    JSON.stringify({ type: 'result', result: {} }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+  assert.equal(result.output, '');
+  assert.ok(
+    events.some((event) =>
+      event.kind === 'warning' &&
+      /Output recovery fallbacks were attempted but yielded no usable text/i.test(event.text)),
+  );
+});
+
 test('CodexAppServerSession: starts codex app-server over stdio and sends initialize handshake', async () => {
   const mock = makeAppServerSpawnMock();
   const session = new CodexAppServerSession(makeConfig('openai', true), process.cwd(), mock.spawnFn);

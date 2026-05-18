@@ -1153,6 +1153,11 @@ const COPILOT_TEXT_PREFERRED_KEYS = [
   'final',
 ] as const;
 
+const COPILOT_COMMAND_PREFERRED_KEYS = ['command', 'tool_name', 'tool', 'name', 'label', 'title'] as const;
+
+const COPILOT_TEXT_PREFERRED_KEY_SET = new Set<string>(COPILOT_TEXT_PREFERRED_KEYS);
+const COPILOT_COMMAND_PREFERRED_KEY_SET = new Set<string>(COPILOT_COMMAND_PREFERRED_KEYS);
+
 const COPILOT_TEXT_IGNORED_KEYS = new Set<string>([
   'id',
   'ids',
@@ -1172,10 +1177,6 @@ const COPILOT_TEXT_IGNORED_KEYS = new Set<string>([
   'path',
   'cwd',
 ]);
-
-const COPILOT_COMMAND_PREFERRED_KEYS = ['command', 'tool_name', 'tool', 'name', 'label', 'title'] as const;
-const COPILOT_TEXT_PREFERRED_KEY_SET = new Set<string>(COPILOT_TEXT_PREFERRED_KEYS);
-const COPILOT_COMMAND_PREFERRED_KEY_SET = new Set<string>(COPILOT_COMMAND_PREFERRED_KEYS);
 
 // Command extraction is intentionally fenced from response-text fields to avoid
 // treating nested message payloads as command labels during tool event parsing.
@@ -1225,6 +1226,8 @@ function extractDeepPreferredStringInner(
   preferredKeySet: ReadonlySet<string>,
   ignoredKeys: ReadonlySet<string>,
   seen: WeakSet<object>,
+  // Direct strings are only accepted after traversing through a preferred key.
+  // This avoids treating arbitrary top-level strings in non-preferred fields as matches.
   allowDirectString: boolean,
 ): string | undefined {
   if (typeof value === 'string') {

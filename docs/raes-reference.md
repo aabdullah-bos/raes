@@ -314,8 +314,10 @@ provider:
 provider:
   name: github_copilot
   github_copilot:
-    transport: exec # or app_server
+    transport: exec
 ```
+
+GitHub Copilot in `raes-execute` uses Copilot CLI programmatic prompt mode (`copilot -p ...`) and does **not** support an `app_server` transport. Ensure `copilot auth login` is completed before running `raes-execute`; prompt mode also requires non-interactive tool approvals, which `raes-execute` configures automatically.
 
 ### Artifact Boundary Rule
 

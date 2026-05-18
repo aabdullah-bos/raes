@@ -18,7 +18,7 @@ export interface RaesConfig {
       transport: 'exec' | 'app_server';
     };
     github_copilot?: {
-      transport: 'exec' | 'app_server';
+      transport: 'exec';
     };
     sandbox?: {
       write_access?: boolean;
@@ -242,19 +242,18 @@ export function extractConfig(
         errors.push({
           field: 'provider.github_copilot',
           message: "invalid 'provider.github_copilot' section — raes.config.yaml",
-          fix: "Set 'provider.github_copilot.transport' to 'exec' or 'app_server', or remove the 'github_copilot:' block to use the default transport",
+          fix: "Set 'provider.github_copilot.transport' to 'exec', or remove the 'github_copilot:' block to use the default transport",
         });
       } else if (isObject(copilotRaw)) {
         const transport = copilotRaw['transport'];
         if (
           transport !== undefined &&
-          transport !== 'exec' &&
-          transport !== 'app_server'
+          transport !== 'exec'
         ) {
           errors.push({
             field: 'provider.github_copilot.transport',
             message: `unknown GitHub Copilot transport '${String(transport)}' — raes.config.yaml`,
-            fix: "Set 'provider.github_copilot.transport' to 'exec' or 'app_server'",
+            fix: "Set 'provider.github_copilot.transport' to 'exec' (GitHub Copilot does not support app_server transport)",
           });
         }
       }
@@ -308,7 +307,7 @@ export function extractConfig(
         provider['name'] === 'github_copilot'
           ? {
               github_copilot: {
-                transport: (githubCopilotRaw?.['transport'] as 'exec' | 'app_server' | undefined) ?? 'exec',
+                transport: (githubCopilotRaw?.['transport'] as 'exec' | undefined) ?? 'exec',
               },
             }
           : {}

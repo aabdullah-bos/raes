@@ -364,3 +364,183 @@ export function checkConfig(
 
   return { errors: [], config, projectRoot: resolvedProjectRoot, configPath };
 }
+
+// ---------------------------------------------------------------------------
+// Workspace support (Option A)
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceError {
+  field: string;
+  message: string;
+  fix?: string;
+}
+
+export interface RaesWorkspace {
+  projects: Record<string, { config: string }>;
+  shared_sources: Record<string, string>;
+}
+
+export function extractWorkspace(
+  data: Record<string, unknown>,
+): { workspace?: RaesWorkspace; errors: WorkspaceError[] } {
+  const errors: WorkspaceError[] = [];
+
+  const projectsRaw = data['projects'];
+  if (!isObject(projectsRaw)) {
+    errors.push({
+      field: 'projects',
+      message: "missing required section 'projects' — raes.workspace.yaml",
+      fix: "Add a 'projects:' section with at least one project entry, each with a 'config:' path",
+    });
+    return { errors };
+  }
+
+  const projects: Record<string, { config: string }> = {};
+  for (const [name, entryRaw] of Object.entries(projectsRaw)) {
+    if (!isObject(entryRaw)) {
+      errors.push({
+        field: `projects.${name}`,
+        message: `project '${name}' must be an object with a 'config' key — raes.workspace.yaml`,
+        fix: `Add 'config: <path/to/raes.config.yaml>' under 'projects.${name}:'`,
+      });
+      continue;
+    }
+    if (!nonEmptyString(entryRaw['config'])) {
+      errors.push({
+        field: `projects.${name}.config`,
+        message: `missing or empty 'config' path for project '${name}' — raes.workspace.yaml`,
+        fix: `Set 'config:' under 'projects.${name}:' to the relative path of that project's raes.config.yaml`,
+      });
+      continue;
+    }
+    projects[name] = { config: entryRaw['config'] };
+  }
+
+  if (errors.length > 0) return { errors };
+
+  if (Object.keys(projects).length === 0) {
+    errors.push({
+      field: 'projects',
+      message: "no projects defined — raes.workspace.yaml",
+      fix: "Add at least one project entry under 'projects:' with a 'config:' path",
+    });
+    return { errors };
+  }
+
+  const sharedSourcesRaw = data['shared_sources'];
+  const shared_sources: Record<string, string> = {};
+  if (sharedSourcesRaw !== undefined) {
+    if (!isObject(sharedSourcesRaw)) {
+      errors.push({
+        field: 'shared_sources',
+        message: "invalid 'shared_sources' section — raes.workspace.yaml",
+        fix: "Set 'shared_sources:' to a map of name: path entries, e.g. raes_reference: docs/raes-reference.md",
+      });
+    } else {
+      for (const [name, pathRaw] of Object.entries(sharedSourcesRaw)) {
+        if (!nonEmptyString(pathRaw)) {
+          errors.push({
+            field: `shared_sources.${name}`,
+            message: `missing or empty path for shared source '${name}' — raes.workspace.yaml`,
+            fix: `Set 'shared_sources.${name}:' to a non-empty file path relative to the workspace root`,
+          });
+        } else {
+          shared_sources[name] = pathRaw;
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) return { errors };
+
+  return { workspace: { projects, shared_sources }, errors: [] };
+}
+
+export function checkWorkspace(
+  cwd: string,
+  workspacePath?: string,
+): { workspace?: RaesWorkspace; workspaceRoot?: string; errors: WorkspaceError[] } {
+  const wsPath = workspacePath !== undefined
+    ? resolve(cwd, workspacePath)
+    : join(cwd, 'raes.workspace.yaml');
+
+  if (!existsSync(wsPath)) {
+    return {
+      errors: [{
+        field: 'raes.workspace.yaml',
+        message: `raes.workspace.yaml not found — expected at: ${wsPath}`,
+        fix: workspacePath !== undefined
+          ? "Pass a valid --workspace <path> pointing to a raes.workspace.yaml file"
+          : "Create raes.workspace.yaml at the workspace root, or pass --workspace <path>",
+      }],
+    };
+  }
+
+  let text: string;
+  try {
+    text = readFileSync(wsPath, 'utf8');
+  } catch (e) {
+    return {
+      errors: [{
+        field: 'raes.workspace.yaml',
+        message: `raes.workspace.yaml could not be read: ${String(e)}`,
+        fix: 'Check file permissions for raes.workspace.yaml',
+      }],
+    };
+  }
+
+  const parsed = parseYaml(text);
+  const { workspace, errors: schemaErrors } = extractWorkspace(parsed);
+  if (schemaErrors.length > 0) return { errors: schemaErrors };
+  if (!workspace) {
+    return { errors: [{ field: 'raes.workspace.yaml', message: 'failed to parse workspace' }] };
+  }
+
+  const workspaceRoot = dirname(wsPath);
+
+  const pathErrors: WorkspaceError[] = [];
+  for (const [name, project] of Object.entries(workspace.projects)) {
+    const abs = join(workspaceRoot, project.config);
+    if (!existsSync(abs)) {
+      pathErrors.push({
+        field: `projects.${name}.config`,
+        message: `project config not found: ${project.config} [projects.${name}]`,
+        fix: `Create '${project.config}' or update 'projects.${name}.config' in raes.workspace.yaml`,
+      });
+    }
+  }
+
+  for (const [name, path] of Object.entries(workspace.shared_sources)) {
+    const abs = join(workspaceRoot, path);
+    if (!existsSync(abs)) {
+      pathErrors.push({
+        field: `shared_sources.${name}`,
+        message: `shared source not found: ${path} [shared_sources.${name}]`,
+        fix: `Create '${path}' or update 'shared_sources.${name}' in raes.workspace.yaml`,
+      });
+    }
+  }
+
+  if (pathErrors.length > 0) return { errors: pathErrors };
+
+  return { workspace, workspaceRoot, errors: [] };
+}
+
+export function resolveProjectFromWorkspace(
+  workspace: RaesWorkspace,
+  workspaceRoot: string,
+  projectName: string,
+): { configPath?: string; error?: WorkspaceError } {
+  const project = workspace.projects[projectName];
+  if (!project) {
+    const known = Object.keys(workspace.projects).join(', ');
+    return {
+      error: {
+        field: `projects.${projectName}`,
+        message: `project '${projectName}' not found in workspace — known projects: ${known}`,
+        fix: `Use one of: ${known}; or add '${projectName}' to raes.workspace.yaml`,
+      },
+    };
+  }
+  return { configPath: join(workspaceRoot, project.config) };
+}

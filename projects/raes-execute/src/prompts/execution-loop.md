@@ -1,3 +1,5 @@
+> **Source:** This is the tool-optimized derivative of the canonical prompt defined in `docs/raes-reference.md` Section 7. Intentional divergences from that spec are recorded in `docs/decisions.md`. Accidental divergence is drift and must be corrected.
+> 
 Read `docs/raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent

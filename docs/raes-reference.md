@@ -294,7 +294,28 @@ PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD
 
 **What does NOT belong in config:** the content of those artifacts. When new constraints emerge during execution, they are recorded in the project's existing truth artifacts — `pipeline.md` for slice progression and workflow guidance, `decisions.md` for durable choices that future slices must respect, `system.md` when the project has a stable project-wide rules document. RAES picks those constraints up on the next pass. This keeps config thin and prevents it from becoming a second documentation system.
 
-**Provider config:** `raes.config.yaml` also includes a `provider` block that tells `raes-execute` which AI provider and transport to use (e.g., `openai` with `app_server` transport). This block is consumed by `raes-execute` at startup and is invisible to the agent prompt — it is infrastructure config, not source routing.
+**Provider config:** `raes.config.yaml` also includes a `provider` block that tells `raes-execute` which AI provider and transport to use. This block is consumed by `raes-execute` at startup and is invisible to the agent prompt — it is infrastructure config, not source routing.
+
+Supported provider options in `raes.config.yaml`:
+
+```yaml
+provider:
+  name: anthropic
+```
+
+```yaml
+provider:
+  name: openai
+  openai:
+    transport: exec # or app_server
+```
+
+```yaml
+provider:
+  name: github_copilot
+  github_copilot:
+    transport: exec # or app_server
+```
 
 ### Artifact Boundary Rule
 

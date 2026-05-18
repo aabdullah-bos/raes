@@ -143,61 +143,79 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function formatCodexAppServerError(error: unknown): ProviderResult {
+interface AppServerErrorProfile {
+  transportLabel: string;
+  providerName: 'openai' | 'github_copilot';
+  loginCommand: string;
+}
+
+const CODEX_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
+  transportLabel: 'codex app-server',
+  providerName: 'openai',
+  loginCommand: 'codex login',
+};
+
+const COPILOT_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
+  transportLabel: 'copilot app-server',
+  providerName: 'github_copilot',
+  loginCommand: 'copilot auth login',
+};
+
+function formatAppServerError(error: unknown, profile: AppServerErrorProfile): ProviderResult {
   const message = toErrorMessage(error);
   if (AUTH_ERROR_RE.test(message)) {
     return {
       output: '',
-      error: `codex app-server authentication failure: ${message}`,
-      fix: 'Run `codex login` to authenticate before using the openai provider.',
+      error: `${profile.transportLabel} authentication failure: ${message}`,
+      fix: `Run \`${profile.loginCommand}\` to authenticate before using the ${profile.providerName} provider.`,
     };
   }
-  if (message.includes('failed to parse codex app-server output as JSONL')) {
+  if (message.includes(`failed to parse ${profile.transportLabel} output as JSONL`)) {
     return {
       output: '',
-      error: `codex app-server protocol failure: ${message}`,
+      error: `${profile.transportLabel} protocol failure: ${message}`,
     };
   }
   if (message.includes('notification missing') || message.includes('request timed out:')) {
     return {
       output: '',
-      error: `codex app-server protocol failure: ${message}`,
+      error: `${profile.transportLabel} protocol failure: ${message}`,
     };
   }
   if (message.includes('request failed:')) {
     return {
       output: '',
-      error: `codex app-server protocol failure: ${message}`,
+      error: `${profile.transportLabel} protocol failure: ${message}`,
     };
   }
   if (message.includes('incomplete turn')) {
     return {
       output: '',
-      error: `codex app-server agent execution failure: ${message}`,
+      error: `${profile.transportLabel} agent execution failure: ${message}`,
     };
   }
   if (message.includes('turn failed')) {
     return {
       output: '',
-      error: `codex app-server agent execution failure: ${message}`,
+      error: `${profile.transportLabel} agent execution failure: ${message}`,
     };
   }
   if (message.includes('exited before clean shutdown')) {
     return {
       output: '',
-      error: `codex app-server transport failure: ${message}`,
+      error: `${profile.transportLabel} transport failure: ${message}`,
     };
   }
   return {
     output: '',
-    error: `codex app-server transport startup failure: ${message}`,
+    error: `${profile.transportLabel} transport startup failure: ${message}`,
   };
 }
 
-function makeAppServerPayloadError(line: string): ProviderResult {
+function makeAppServerPayloadError(line: string, transportLabel: string): ProviderResult {
   return {
     output: '',
-    error: `codex app-server protocol failure: failed to parse codex app-server output as JSONL: ${line.slice(0, 200)}`,
+    error: `${transportLabel} protocol failure: failed to parse ${transportLabel} output as JSONL: ${line.slice(0, 200)}`,
   };
 }
 
@@ -261,6 +279,8 @@ export class CodexAppServerSession implements ProviderSession {
   private spawnFn: SpawnFn;
   private requestTimeoutMs: number;
   private turnCompletionTimeoutMs: number;
+  private cliCommand: string;
+  private errorProfile: AppServerErrorProfile;
   private child: SpawnedProcess | null = null;
   private nextRequestId = 1;
   private stdoutBuffer = '';
@@ -285,13 +305,22 @@ export class CodexAppServerSession implements ProviderSession {
       }
     | undefined;
 
-  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn, options: CodexAppServerSessionOptions = {}) {
+  constructor(
+    config: RaesConfig,
+    cwd: string,
+    spawnFn?: SpawnFn,
+    options: CodexAppServerSessionOptions = {},
+    cliCommand = 'codex',
+    errorProfile: AppServerErrorProfile = CODEX_APP_SERVER_ERROR_PROFILE,
+  ) {
     this.config = config;
     this.cwd = cwd;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
     this.requestTimeoutMs = options.requestTimeoutMs ?? CodexAppServerSession.DEFAULT_REQUEST_TIMEOUT_MS;
     this.turnCompletionTimeoutMs =
       options.turnCompletionTimeoutMs ?? CodexAppServerSession.DEFAULT_TURN_COMPLETION_TIMEOUT_MS;
+    this.cliCommand = cliCommand;
+    this.errorProfile = errorProfile;
   }
 
   async start(): Promise<void> {
@@ -321,7 +350,7 @@ export class CodexAppServerSession implements ProviderSession {
     try {
       await this.start();
     } catch (error) {
-      return formatCodexAppServerError(error);
+      return formatAppServerError(error, this.errorProfile);
     }
 
     if (!this.threadId) {
@@ -403,7 +432,7 @@ export class CodexAppServerSession implements ProviderSession {
   }
 
   private async startInternal(): Promise<void> {
-    const child = this.spawnFn('codex', ['app-server', '--listen', 'stdio://']) as SpawnedProcess;
+    const child = this.spawnFn(this.cliCommand, ['app-server', '--listen', 'stdio://']) as SpawnedProcess;
     this.child = child;
 
     if (!child.stdin || !child.stdout || !child.stderr) {
@@ -478,12 +507,12 @@ export class CodexAppServerSession implements ProviderSession {
     try {
       parsed = JSON.parse(line);
     } catch {
-      return makeAppServerPayloadError(line);
+      return makeAppServerPayloadError(line, this.errorProfile.transportLabel);
     }
 
     const message = readRecord(parsed);
     if (!message) {
-      return makeAppServerPayloadError(line);
+      return makeAppServerPayloadError(line, this.errorProfile.transportLabel);
     }
 
     const id = readJsonRpcId(message['id']);
@@ -598,7 +627,7 @@ export class CodexAppServerSession implements ProviderSession {
     if (this.activeTurn.timeout) {
       clearTimeout(this.activeTurn.timeout);
     }
-    this.activeTurn.resolve(formatCodexAppServerError(error));
+    this.activeTurn.resolve(formatAppServerError(error, this.errorProfile));
     this.activeTurn = undefined;
   }
 
@@ -629,7 +658,7 @@ export class CodexAppServerSession implements ProviderSession {
     this.pendingRequests.clear();
 
     if (this.activeTurn && !this.activeTurn.done) {
-      this.finishActiveTurn(formatCodexAppServerError(error));
+      this.finishActiveTurn(formatAppServerError(error, this.errorProfile));
     }
   }
 }
@@ -1174,11 +1203,23 @@ export class ClaudeCodeProvider extends OneShotProvider {
 export class CodexProvider extends OneShotProvider {
   private config: RaesConfig;
   private spawnFn: SpawnFn;
+  private cliCommand: string;
+  private providerName: 'openai' | 'github_copilot';
+  private loginCommand: string;
 
-  constructor(config: RaesConfig, spawnFn?: SpawnFn) {
+  constructor(
+    config: RaesConfig,
+    spawnFn?: SpawnFn,
+    cliCommand = 'codex',
+    providerName: 'openai' | 'github_copilot' = 'openai',
+    loginCommand = 'codex login',
+  ) {
     super();
     this.config = config;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+    this.cliCommand = cliCommand;
+    this.providerName = providerName;
+    this.loginCommand = loginCommand;
   }
 
   async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
@@ -1189,12 +1230,12 @@ export class CodexProvider extends OneShotProvider {
     }
 
     return new Promise((resolve) => {
-      const child = this.spawnFn('codex', args);
+      const child = this.spawnFn(this.cliCommand, args);
 
       if (!child.stdin || !child.stdout || !child.stderr) {
         resolve({
           output: '',
-          error: 'Failed to spawn codex subprocess: stdio streams unavailable',
+          error: `Failed to spawn ${this.cliCommand} subprocess: stdio streams unavailable`,
         });
         return;
       }
@@ -1223,13 +1264,13 @@ export class CodexProvider extends OneShotProvider {
           if (isAuthError) {
             resolve({
               output: '',
-              error: `codex subprocess exited with code ${code ?? 'null'}. ${stderr.trim()}`,
-              fix: 'Run `codex login` to authenticate before using the openai provider.',
+              error: `${this.cliCommand} subprocess exited with code ${code ?? 'null'}. ${stderr.trim()}`,
+              fix: `Run \`${this.loginCommand}\` to authenticate before using the ${this.providerName} provider.`,
             });
           } else {
             resolve({
               output: '',
-              error: `codex subprocess exited with code ${code ?? 'null'}${stderr ? `. stderr: ${stderr}` : ''}`,
+              error: `${this.cliCommand} subprocess exited with code ${code ?? 'null'}${stderr ? `. stderr: ${stderr}` : ''}`,
             });
           }
           return;
@@ -1243,7 +1284,7 @@ export class CodexProvider extends OneShotProvider {
         }
         resolve(result ?? {
           output: '',
-          error: 'codex output did not include a turn/completed event',
+          error: `${this.cliCommand} output did not include a turn/completed event`,
         });
       });
     });
@@ -1254,15 +1295,32 @@ export class CodexAppServerProvider implements Provider {
   private config: RaesConfig;
   private cwd: string;
   private spawnFn: SpawnFn;
+  private cliCommand: string;
+  private errorProfile: AppServerErrorProfile;
 
-  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
+  constructor(
+    config: RaesConfig,
+    cwd: string,
+    spawnFn?: SpawnFn,
+    cliCommand = 'codex',
+    errorProfile: AppServerErrorProfile = CODEX_APP_SERVER_ERROR_PROFILE,
+  ) {
     this.config = config;
     this.cwd = cwd;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+    this.cliCommand = cliCommand;
+    this.errorProfile = errorProfile;
   }
 
   async startSession(): Promise<ProviderSession> {
-    return new CodexAppServerSession(this.config, this.cwd, this.spawnFn);
+    return new CodexAppServerSession(
+      this.config,
+      this.cwd,
+      this.spawnFn,
+      undefined,
+      this.cliCommand,
+      this.errorProfile,
+    );
   }
 
   async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
@@ -1275,6 +1333,18 @@ export class CodexAppServerProvider implements Provider {
   }
 }
 
+export class GitHubCopilotProvider extends CodexProvider {
+  constructor(config: RaesConfig, spawnFn?: SpawnFn) {
+    super(config, spawnFn, 'copilot', 'github_copilot', 'copilot auth login');
+  }
+}
+
+export class GitHubCopilotAppServerProvider extends CodexAppServerProvider {
+  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
+    super(config, cwd, spawnFn, 'copilot', COPILOT_APP_SERVER_ERROR_PROFILE);
+  }
+}
+
 export function createProvider(config: RaesConfig, cwd = process.cwd()): Provider {
   switch (config.provider.name) {
     case 'anthropic':
@@ -1284,6 +1354,11 @@ export function createProvider(config: RaesConfig, cwd = process.cwd()): Provide
         return new CodexAppServerProvider(config, cwd);
       }
       return new CodexProvider(config);
+    case 'github_copilot':
+      if (config.provider.github_copilot?.transport === 'app_server') {
+        return new GitHubCopilotAppServerProvider(config, cwd);
+      }
+      return new GitHubCopilotProvider(config);
     default:
       throw new Error(`unknown provider: ${(config.provider as { name?: string }).name ?? '(missing)'}`);
   }

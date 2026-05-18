@@ -1,13 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ClaudeCodeProvider, CodexAppServerProvider, CodexAppServerSession, CodexProvider, createProvider } from '../src/provider.ts';
+import {
+  ClaudeCodeProvider,
+  CodexAppServerProvider,
+  CodexAppServerSession,
+  CodexProvider,
+  GitHubCopilotAppServerProvider,
+  GitHubCopilotProvider,
+  createProvider,
+} from '../src/provider.ts';
 import type { RaesConfig } from '../src/config.ts';
 import type { ProviderProgressEvent, ProviderSession, SpawnFn } from '../src/provider.ts';
 
 function makeConfig(
-  providerName: 'anthropic' | 'openai',
+  providerName: 'anthropic' | 'openai' | 'github_copilot',
   writeAccess?: boolean,
   openaiTransport?: 'exec' | 'app_server',
+  githubCopilotTransport?: 'exec' | 'app_server',
 ): RaesConfig {
   return {
     project: { name: 'test' },
@@ -23,6 +32,9 @@ function makeConfig(
       name: providerName,
       ...(providerName === 'openai' && openaiTransport
         ? { openai: { transport: openaiTransport } }
+        : {}),
+      ...(providerName === 'github_copilot' && githubCopilotTransport
+        ? { github_copilot: { transport: githubCopilotTransport } }
         : {}),
       ...(writeAccess !== undefined ? { sandbox: { write_access: writeAccess } } : {}),
     },
@@ -369,6 +381,29 @@ test('CodexProvider: startSession returns a closeable session that forwards prog
   assert.equal(result.output, 'done');
   assert.deepEqual(events, [{ kind: 'status', text: 'Session started' }]);
   await session.close();
+});
+
+test('GitHubCopilotProvider: uses copilot exec transport command with sandbox', async () => {
+  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'done' })}\n` });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot', true), mock.spawnFn);
+  await provider.submit('test prompt');
+  assert.equal(mock.capturedCmd, 'copilot');
+  assert.ok(mock.capturedArgs.includes('exec'));
+  assert.ok(mock.capturedArgs.includes('--sandbox'));
+  assert.ok(mock.capturedArgs.includes('workspace-write'));
+});
+
+test('GitHubCopilotProvider: auth failure includes copilot auth login guidance', async () => {
+  const mock = makeSpawnMock({
+    stdoutData: '',
+    stderrData: 'Not logged in',
+    exitCode: 1,
+  });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /copilot subprocess exited/i);
+  assert.match(result.fix ?? '', /copilot auth login/i);
 });
 
 test('CodexAppServerSession: starts codex app-server over stdio and sends initialize handshake', async () => {
@@ -1084,6 +1119,16 @@ test('createProvider: returns CodexProvider for explicit openai exec transport',
 test('createProvider: returns CodexAppServerProvider for openai app_server transport', () => {
   const provider = createProvider(makeConfig('openai', undefined, 'app_server'));
   assert.ok(provider instanceof CodexAppServerProvider);
+});
+
+test('createProvider: returns GitHubCopilotProvider for github_copilot config', () => {
+  const provider = createProvider(makeConfig('github_copilot'));
+  assert.ok(provider instanceof GitHubCopilotProvider);
+});
+
+test('createProvider: returns GitHubCopilotAppServerProvider for github_copilot app_server transport', () => {
+  const provider = createProvider(makeConfig('github_copilot', undefined, undefined, 'app_server'));
+  assert.ok(provider instanceof GitHubCopilotAppServerProvider);
 });
 
 test('CodexAppServerSession: authentication failure returns actionable fix guidance', async () => {

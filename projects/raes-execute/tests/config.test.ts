@@ -228,7 +228,7 @@ function makeValidConfig(overrides?: Partial<{
   durable_decisions: string;
   execution_guidance: string;
   validation: string;
-  providerName: 'anthropic' | 'openai';
+  providerName: 'anthropic' | 'openai' | 'github_copilot';
 }>) {
   return {
     project: { name: 'test-project' },
@@ -243,7 +243,7 @@ function makeValidConfig(overrides?: Partial<{
       execution_guidance: overrides?.execution_guidance ?? 'docs/execution-guidance.md',
       validation: overrides?.validation ?? 'docs/validation.md',
     },
-    provider: { name: overrides?.providerName ?? 'anthropic' as 'anthropic' | 'openai' },
+    provider: { name: overrides?.providerName ?? 'anthropic' as 'anthropic' | 'openai' | 'github_copilot' },
   };
 }
 
@@ -476,6 +476,31 @@ test('extractConfig: openai provider accepts explicit app_server transport', () 
   assert.equal(config.provider.openai?.transport, 'app_server');
 });
 
+test('extractConfig: provider.name github_copilot returns config with no errors', () => {
+  const data = { ...VALID_PARSED, provider: { name: 'github_copilot' } };
+  const { config, errors } = extractConfig(data);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.name, 'github_copilot');
+  assert.equal(config.provider.github_copilot?.transport, 'exec');
+});
+
+test('extractConfig: github_copilot provider accepts explicit app_server transport', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: {
+      name: 'github_copilot',
+      github_copilot: {
+        transport: 'app_server',
+      },
+    },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.github_copilot?.transport, 'app_server');
+});
+
 test('extractConfig: missing provider section reports error with fix', () => {
   const { project, sources } = VALID_PARSED;
   const { config, errors } = extractConfig({ project, sources });
@@ -513,6 +538,22 @@ test('extractConfig: invalid openai transport reports error with fix', () => {
   const { config, errors } = extractConfig(data as Record<string, unknown>);
   assert.equal(config, undefined);
   assert.ok(errors.some((e) => e.field === 'provider.openai.transport'));
+  assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
+});
+
+test('extractConfig: invalid github_copilot transport reports error with fix', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: {
+      name: 'github_copilot',
+      github_copilot: {
+        transport: 'websocket',
+      },
+    },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field === 'provider.github_copilot.transport'));
   assert.ok(errors.some((e) => e.fix && e.fix.length > 0), 'expected fix guidance');
 });
 
@@ -751,4 +792,3 @@ test('resolveProjectFromWorkspace: unknown project returns error with known proj
   assert.ok(error.message.includes('raes-execute'));
   assert.ok(error.fix);
 });
-

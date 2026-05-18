@@ -1463,17 +1463,17 @@ export class CodexAppServerProvider implements Provider {
   }
 }
 
-export class GitHubCopilotProvider extends CodexProvider {
+export class GitHubCopilotProvider extends OneShotProvider {
   private config: RaesConfig;
   private spawnFn: SpawnFn;
 
   constructor(config: RaesConfig, spawnFn?: SpawnFn) {
-    super(config, spawnFn, 'copilot', 'github_copilot', 'copilot auth login');
+    super();
     this.config = config;
     this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   }
 
-  override async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
+  async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
     const writeAccess = this.config.provider.sandbox?.write_access !== false;
     const args = ['-p', prompt, '--output-format=json', '--allow-all-tools'];
     if (writeAccess) {

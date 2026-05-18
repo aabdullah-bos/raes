@@ -485,7 +485,23 @@ test('extractConfig: provider.name github_copilot returns config with no errors'
   assert.equal(config.provider.github_copilot?.transport, 'exec');
 });
 
-test('extractConfig: github_copilot provider accepts explicit app_server transport', () => {
+test('extractConfig: github_copilot provider accepts explicit exec transport', () => {
+  const data = {
+    ...VALID_PARSED,
+    provider: {
+      name: 'github_copilot',
+      github_copilot: {
+        transport: 'exec',
+      },
+    },
+  };
+  const { config, errors } = extractConfig(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(config, 'expected config');
+  assert.equal(config.provider.github_copilot?.transport, 'exec');
+});
+
+test('extractConfig: github_copilot provider rejects app_server transport with fix guidance', () => {
   const data = {
     ...VALID_PARSED,
     provider: {
@@ -496,9 +512,9 @@ test('extractConfig: github_copilot provider accepts explicit app_server transpo
     },
   };
   const { config, errors } = extractConfig(data as Record<string, unknown>);
-  assert.equal(errors.length, 0);
-  assert.ok(config, 'expected config');
-  assert.equal(config.provider.github_copilot?.transport, 'app_server');
+  assert.equal(config, undefined);
+  assert.ok(errors.some((e) => e.field === 'provider.github_copilot.transport'));
+  assert.ok(errors.some((e) => /does not support app_server transport/i.test(e.fix ?? '')), 'expected app_server fix guidance');
 });
 
 test('extractConfig: missing provider section reports error with fix', () => {

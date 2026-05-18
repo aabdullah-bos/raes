@@ -162,14 +162,6 @@ const CODEX_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
   installLabel: 'Codex CLI',
 };
 
-const COPILOT_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
-  transportLabel: 'copilot app-server',
-  providerName: 'github_copilot',
-  loginCommand: 'copilot auth login',
-  cliCommand: 'copilot',
-  installLabel: 'Copilot CLI',
-};
-
 function isMissingBinaryError(message: string, cliCommand: string): boolean {
   return (
     /\bENOENT\b/i.test(message) &&
@@ -1100,6 +1092,69 @@ function extractClaudeFinalText(event: Record<string, unknown>): string | undefi
   );
 }
 
+function makeRawLineDebugEvent(line: string): ProviderProgressEvent {
+  return {
+    kind: 'message',
+    text: line,
+    eventType: 'raw',
+    phase: 'unknown',
+  };
+}
+
+function extractCopilotFinalText(event: Record<string, unknown>): string | undefined {
+  return (
+    readNonEmptyString(event['output_text']) ??
+    readNonEmptyString(event['result']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(event['message']) ??
+    readNonEmptyString(readRecord(event['message'])?.['text']) ??
+    readNonEmptyString(readRecord(event['content'])?.['text']) ??
+    readNonEmptyString(readRecord(event['delta'])?.['text'])
+  );
+}
+
+function extractCopilotPromptResultFromLine(
+  line: string,
+  hooks: ProviderHooks | undefined,
+  state: { finalOutput: string },
+): ProviderResult | undefined {
+  if (hooks?.rawEvents) {
+    emitProgress(hooks, makeRawLineDebugEvent(line));
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    const fallbackText = line.trim();
+    if (fallbackText.length > 0) {
+      state.finalOutput = state.finalOutput.length > 0
+        ? `${state.finalOutput}\n${fallbackText}`
+        : fallbackText;
+    }
+    return undefined;
+  }
+
+  const event = readRecord(parsed);
+  if (!event) {
+    return undefined;
+  }
+
+  if (isCodexCompletedEvent(readEventType(event))) {
+    state.finalOutput = extractCodexCompletedText(event) || state.finalOutput;
+    return { output: state.finalOutput };
+  }
+
+  const progress = summarizeCodexEvent(event);
+  if (progress) emitProgress(hooks, progress);
+
+  const finalText = extractCopilotFinalText(event);
+  if (finalText) {
+    state.finalOutput = finalText;
+  }
+  return undefined;
+}
+
 function extractCodexResultFromLine(line: string, hooks?: ProviderHooks): ProviderResult | undefined {
   let parsed: unknown;
   try {
@@ -1408,15 +1463,98 @@ export class CodexAppServerProvider implements Provider {
   }
 }
 
-export class GitHubCopilotProvider extends CodexProvider {
-  constructor(config: RaesConfig, spawnFn?: SpawnFn) {
-    super(config, spawnFn, 'copilot', 'github_copilot', 'copilot auth login');
-  }
-}
+export class GitHubCopilotProvider extends OneShotProvider {
+  private config: RaesConfig;
+  private spawnFn: SpawnFn;
 
-export class GitHubCopilotAppServerProvider extends CodexAppServerProvider {
-  constructor(config: RaesConfig, cwd: string, spawnFn?: SpawnFn) {
-    super(config, cwd, spawnFn, 'copilot', COPILOT_APP_SERVER_ERROR_PROFILE);
+  constructor(config: RaesConfig, spawnFn?: SpawnFn) {
+    super();
+    this.config = config;
+    this.spawnFn = spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+  }
+
+  async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
+    const writeAccess = this.config.provider.sandbox?.write_access !== false;
+    const args = ['-p', prompt, '--output-format=json', '--allow-all-tools'];
+    if (!writeAccess) {
+      args.push('--deny-tool=write', '--deny-tool=shell');
+    }
+    if (this.config.provider.model) {
+      args.push(`--model=${this.config.provider.model}`);
+    }
+
+    return new Promise((resolve) => {
+      let child: ReturnType<SpawnFn>;
+      try {
+        child = this.spawnFn('copilot', args);
+      } catch (error) {
+        const message = toErrorMessage(error);
+        if (isMissingBinaryError(message, 'copilot')) {
+          resolve(makeMissingBinaryResult('copilot', 'Copilot CLI'));
+          return;
+        }
+        resolve({
+          output: '',
+          error: `Failed to spawn copilot subprocess: ${message}`,
+        });
+        return;
+      }
+
+      if (!child.stdout || !child.stderr) {
+        resolve({
+          output: '',
+          error: 'Failed to spawn copilot subprocess: stdio streams unavailable',
+        });
+        return;
+      }
+
+      let stdoutBuffer = '';
+      let stderr = '';
+      const state = { finalOutput: '' };
+      let result: ProviderResult | undefined;
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        const parsed = parseJsonlChunk(chunk.toString(), stdoutBuffer, (line) =>
+          extractCopilotPromptResultFromLine(line, hooks, state),
+        );
+        stdoutBuffer = parsed.buffer;
+        if (parsed.result) {
+          state.finalOutput = parsed.result.output;
+          result = parsed.result;
+        }
+      });
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      child.stdin?.end();
+
+      child.on('close', (code: number | null) => {
+        if (code !== 0) {
+          const isAuthError = AUTH_ERROR_RE.test(stderr);
+          if (isAuthError) {
+            resolve({
+              output: '',
+              error: `copilot subprocess exited with code ${code ?? 'null'}. ${stderr.trim()}`,
+              fix: 'Run `copilot auth login` to authenticate before using the github_copilot provider.',
+            });
+          } else {
+            resolve({
+              output: '',
+              error: `copilot subprocess exited with code ${code ?? 'null'}${stderr ? `. stderr: ${stderr}` : ''}`,
+            });
+          }
+          return;
+        }
+
+        const trailing = parseTrailingJsonlBuffer(stdoutBuffer, (line) =>
+          extractCopilotPromptResultFromLine(line, hooks, state),
+        );
+        if (trailing) {
+          state.finalOutput = trailing.output;
+          result = trailing;
+        }
+        resolve(result ?? { output: state.finalOutput });
+      });
+    });
   }
 }
 
@@ -1430,9 +1568,6 @@ export function createProvider(config: RaesConfig, cwd = process.cwd()): Provide
       }
       return new CodexProvider(config);
     case 'github_copilot':
-      if (config.provider.github_copilot?.transport === 'app_server') {
-        return new GitHubCopilotAppServerProvider(config, cwd);
-      }
       return new GitHubCopilotProvider(config);
     default:
       throw new Error(`unknown provider: ${(config.provider as { name?: string }).name ?? '(missing)'}`);

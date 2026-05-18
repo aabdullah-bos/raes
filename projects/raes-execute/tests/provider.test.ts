@@ -5,7 +5,6 @@ import {
   CodexAppServerProvider,
   CodexAppServerSession,
   CodexProvider,
-  GitHubCopilotAppServerProvider,
   GitHubCopilotProvider,
   createProvider,
 } from '../src/provider.ts';
@@ -16,7 +15,7 @@ function makeConfig(
   providerName: 'anthropic' | 'openai' | 'github_copilot',
   writeAccess?: boolean,
   openaiTransport?: 'exec' | 'app_server',
-  githubCopilotTransport?: 'exec' | 'app_server',
+  githubCopilotTransport?: 'exec',
 ): RaesConfig {
   return {
     project: { name: 'test' },
@@ -409,14 +408,24 @@ test('CodexProvider: startSession returns a closeable session that forwards prog
   await session.close();
 });
 
-test('GitHubCopilotProvider: uses copilot exec transport command with sandbox', async () => {
+test('GitHubCopilotProvider: uses copilot prompt mode with non-interactive flags', async () => {
   const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'done' })}\n` });
   const provider = new GitHubCopilotProvider(makeConfig('github_copilot', true), mock.spawnFn);
   await provider.submit('test prompt');
   assert.equal(mock.capturedCmd, 'copilot');
-  assert.ok(mock.capturedArgs.includes('exec'));
-  assert.ok(mock.capturedArgs.includes('--sandbox'));
-  assert.ok(mock.capturedArgs.includes('workspace-write'));
+  assert.ok(mock.capturedArgs.includes('-p'));
+  assert.ok(mock.capturedArgs.includes('test prompt'));
+  assert.ok(mock.capturedArgs.includes('--output-format=json'));
+  assert.ok(mock.capturedArgs.includes('--allow-all-tools'));
+});
+
+test('GitHubCopilotProvider: read-only sandbox denies write and shell tools', async () => {
+  const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'done' })}\n` });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot', false), mock.spawnFn);
+  await provider.submit('test prompt');
+  assert.ok(mock.capturedArgs.includes('--allow-all-tools'));
+  assert.ok(mock.capturedArgs.includes('--deny-tool=write'));
+  assert.ok(mock.capturedArgs.includes('--deny-tool=shell'));
 });
 
 test('GitHubCopilotProvider: auth failure includes copilot auth login guidance', async () => {
@@ -1166,9 +1175,9 @@ test('createProvider: returns GitHubCopilotProvider for github_copilot config', 
   assert.ok(provider instanceof GitHubCopilotProvider);
 });
 
-test('createProvider: returns GitHubCopilotAppServerProvider for github_copilot app_server transport', () => {
-  const provider = createProvider(makeConfig('github_copilot', undefined, undefined, 'app_server'));
-  assert.ok(provider instanceof GitHubCopilotAppServerProvider);
+test('createProvider: returns GitHubCopilotProvider for explicit github_copilot exec transport', () => {
+  const provider = createProvider(makeConfig('github_copilot', undefined, undefined, 'exec'));
+  assert.ok(provider instanceof GitHubCopilotProvider);
 });
 
 test('CodexAppServerSession: authentication failure returns actionable fix guidance', async () => {

@@ -1382,6 +1382,7 @@ test('generates the RAES docs set for the cli archetype', async () => {
   assert.doesNotMatch(systemText, /cli-doc-generator/);
 
   const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
+  assert.match(pipelineText, /# raes-execute/);
   assert.match(pipelineText, /## Slice Backlog/);
   assert.match(pipelineText, /## Handoff Notes/);
   assert.match(pipelineText, /\[ \] Slice 1/);

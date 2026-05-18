@@ -386,7 +386,7 @@ export async function registerProjectInWorkspace(
 }
 
 function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+  return s.replace(/[-.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function validateRequiredInput(label: string, value: string): void {

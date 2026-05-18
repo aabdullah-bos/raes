@@ -288,12 +288,12 @@ export async function generateDocs({
     log?.(`  ${fileName}`);
   }
 
-  // Write raes.config.yaml to project root (not docs/)
+  // Write raes.config.yaml to project root (not docs/).
+  // Config is YAML, not markdown; there are no required headings to validate.
   const configContent = generatedContent.get(CONFIG_FILE_NAME);
   if (!configContent) {
     throw new GenerationError(`missing generated content for ${CONFIG_FILE_NAME}`);
   }
-  validateGeneratedDocShape(CONFIG_FILE_NAME, REQUIRED_DOC_HEADINGS[CONFIG_FILE_NAME] ?? [], configContent);
   await writeFile(configOutputPath, configContent, 'utf8');
   log?.(`  ${CONFIG_FILE_NAME}`);
 
@@ -386,7 +386,7 @@ export async function registerProjectInWorkspace(
 }
 
 function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 }
 
 function validateRequiredInput(label: string, value: string): void {

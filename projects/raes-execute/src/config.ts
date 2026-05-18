@@ -12,9 +12,12 @@ export interface RaesConfig {
     validation: string;
   };
   provider: {
-    name: 'anthropic' | 'openai';
+    name: 'anthropic' | 'openai' | 'github_copilot';
     model?: string;
     openai?: {
+      transport: 'exec' | 'app_server';
+    };
+    github_copilot?: {
       transport: 'exec' | 'app_server';
     };
     sandbox?: {
@@ -195,7 +198,7 @@ export function extractConfig(
     errors.push({
       field: 'provider',
       message: "missing required section 'provider' — raes.config.yaml",
-      fix: "Add a 'provider:' section with 'name: anthropic' or 'name: openai' to raes.config.yaml",
+      fix: "Add a 'provider:' section with 'name: anthropic', 'name: openai', or 'name: github_copilot' to raes.config.yaml",
     });
   } else {
     const providerName = providerRaw['name'];
@@ -203,13 +206,13 @@ export function extractConfig(
       errors.push({
         field: 'provider.name',
         message: "missing or empty 'provider.name' — raes.config.yaml",
-        fix: "Set 'provider.name' to 'anthropic' or 'openai' in raes.config.yaml",
+        fix: "Set 'provider.name' to 'anthropic', 'openai', or 'github_copilot' in raes.config.yaml",
       });
-    } else if (providerName !== 'anthropic' && providerName !== 'openai') {
+    } else if (providerName !== 'anthropic' && providerName !== 'openai' && providerName !== 'github_copilot') {
       errors.push({
         field: 'provider.name',
         message: `unknown provider '${providerName}' — raes.config.yaml`,
-        fix: "Set 'provider.name' to one of: anthropic, openai",
+        fix: "Set 'provider.name' to one of: anthropic, openai, github_copilot",
       });
     } else if (providerName === 'openai') {
       const openaiRaw = providerRaw['openai'];
@@ -233,6 +236,28 @@ export function extractConfig(
           });
         }
       }
+    } else if (providerName === 'github_copilot') {
+      const copilotRaw = providerRaw['github_copilot'];
+      if (copilotRaw !== undefined && !isObject(copilotRaw)) {
+        errors.push({
+          field: 'provider.github_copilot',
+          message: "invalid 'provider.github_copilot' section — raes.config.yaml",
+          fix: "Set 'provider.github_copilot.transport' to 'exec' or 'app_server', or remove the 'github_copilot:' block to use the default transport",
+        });
+      } else if (isObject(copilotRaw)) {
+        const transport = copilotRaw['transport'];
+        if (
+          transport !== undefined &&
+          transport !== 'exec' &&
+          transport !== 'app_server'
+        ) {
+          errors.push({
+            field: 'provider.github_copilot.transport',
+            message: `unknown GitHub Copilot transport '${String(transport)}' — raes.config.yaml`,
+            fix: "Set 'provider.github_copilot.transport' to 'exec' or 'app_server'",
+          });
+        }
+      }
     }
   }
 
@@ -242,6 +267,9 @@ export function extractConfig(
   const sandboxRaw = provider['sandbox'];
   const openaiRaw = isObject(provider['openai'])
     ? provider['openai'] as Record<string, unknown>
+    : undefined;
+  const githubCopilotRaw = isObject(provider['github_copilot'])
+    ? provider['github_copilot'] as Record<string, unknown>
     : undefined;
   const sandboxObj = isObject(sandboxRaw) ? (sandboxRaw as Record<string, unknown>) : undefined;
   let writeAccess: boolean | undefined;
@@ -265,13 +293,22 @@ export function extractConfig(
       validation: sourcesRaw['validation'] as string,
     },
     provider: {
-      name: provider['name'] as 'anthropic' | 'openai',
+      name: provider['name'] as 'anthropic' | 'openai' | 'github_copilot',
       ...(nonEmptyString(provider['model']) ? { model: provider['model'] as string } : {}),
       ...(
         provider['name'] === 'openai'
           ? {
               openai: {
                 transport: (openaiRaw?.['transport'] as 'exec' | 'app_server' | undefined) ?? 'exec',
+              },
+            }
+          : {}
+      ),
+      ...(
+        provider['name'] === 'github_copilot'
+          ? {
+              github_copilot: {
+                transport: (githubCopilotRaw?.['transport'] as 'exec' | 'app_server' | undefined) ?? 'exec',
               },
             }
           : {}

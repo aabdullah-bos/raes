@@ -133,12 +133,11 @@ test('runReviewLoop: prints intermediate provider progress before final output',
     assert.equal(result.exitCode, 0);
     const providerStartIndex = out.indexOf('Provider:    started; waiting for progress...');
     const progressIndex = out.indexOf('[status] Reviewing artifacts');
-    const toolIndex = out.indexOf('[tool] Read');
     const outputIndex = out.indexOf('review output line');
     assert.ok(providerStartIndex >= 0);
     assert.ok(progressIndex > providerStartIndex, 'expected status after provider start');
-    assert.ok(toolIndex > progressIndex, 'expected tool event after status event');
-    assert.ok(outputIndex > toolIndex, 'expected final output after progress events');
+    assert.ok(!out.includes('[tool] Read'), 'expected non-command tool events to be suppressed in progress mode');
+    assert.ok(outputIndex > progressIndex, 'expected final output after progress events');
   } finally {
     rmSync(dir, { recursive: true });
   }

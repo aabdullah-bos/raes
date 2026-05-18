@@ -165,6 +165,10 @@ function shouldSuppressEvent(event: ProviderProgressEvent, verbosity: ProgressVe
     return true;
   }
 
+  if (verbosity === 'progress' && event.kind === 'tool' && event.phase !== 'command') {
+    return true;
+  }
+
   return false;
 }
 

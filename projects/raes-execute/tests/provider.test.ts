@@ -732,11 +732,10 @@ test('GitHubCopilotProvider: emits diagnostic warning when only metadata is pres
     onProgress: (event) => events.push(event),
   });
   assert.equal(result.output, '');
-  assert.ok(
-    events.some((event) =>
-      event.kind === 'warning' &&
-      /Output recovery fallbacks were attempted but yielded no usable text/i.test(event.text)),
-  );
+  const warningEvent = events.find((event) =>
+    event.kind === 'warning' &&
+    /Output recovery fallbacks were attempted but yielded no usable text/i.test(event.text));
+  assert.ok(warningEvent);
 });
 
 test('CodexAppServerSession: starts codex app-server over stdio and sends initialize handshake', async () => {

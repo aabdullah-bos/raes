@@ -837,6 +837,7 @@ function extractCommandText(event: Record<string, unknown>): string | undefined 
     const nested = extractDeepPreferredString(
       root,
       COPILOT_COMMAND_PREFERRED_KEYS,
+      COPILOT_COMMAND_PREFERRED_KEY_SET,
       COPILOT_COMMAND_IGNORED_KEYS,
     );
     const normalized = readNonEmptyString(nested);
@@ -1173,6 +1174,8 @@ const COPILOT_TEXT_IGNORED_KEYS = new Set<string>([
 ]);
 
 const COPILOT_COMMAND_PREFERRED_KEYS = ['command', 'tool_name', 'tool', 'name', 'label', 'title'] as const;
+const COPILOT_TEXT_PREFERRED_KEY_SET = new Set<string>(COPILOT_TEXT_PREFERRED_KEYS);
+const COPILOT_COMMAND_PREFERRED_KEY_SET = new Set<string>(COPILOT_COMMAND_PREFERRED_KEYS);
 
 const COPILOT_COMMAND_IGNORED_KEYS = new Set<string>([
   'id',
@@ -1201,9 +1204,9 @@ const COPILOT_COMMAND_IGNORED_KEYS = new Set<string>([
 function extractDeepPreferredString(
   value: unknown,
   preferredKeys: ReadonlyArray<string>,
+  preferredKeySet: ReadonlySet<string>,
   ignoredKeys: ReadonlySet<string>,
 ): string | undefined {
-  const preferredKeySet = new Set(preferredKeys);
   return extractDeepPreferredStringInner(
     value,
     preferredKeys,
@@ -1291,11 +1294,13 @@ function extractCopilotResultText(event: Record<string, unknown>): string | unde
   const deepResultText = extractDeepPreferredString(
     result,
     COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_PREFERRED_KEY_SET,
     COPILOT_TEXT_IGNORED_KEYS,
   );
   const deepEventText = extractDeepPreferredString(
     event,
     COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_PREFERRED_KEY_SET,
     COPILOT_TEXT_IGNORED_KEYS,
   );
   const text = (
@@ -1320,6 +1325,7 @@ function extractCopilotAssistantMessageText(event: Record<string, unknown>): str
   const deepText = extractDeepPreferredString(
     event,
     COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_PREFERRED_KEY_SET,
     COPILOT_TEXT_IGNORED_KEYS,
   );
   const text = (

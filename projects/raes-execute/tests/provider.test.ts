@@ -719,11 +719,11 @@ test('GitHubCopilotProvider: returns fallback assistant output when stream ends 
   assert.equal(result.output, 'Recovered from assistant.message when result event is absent.');
 });
 
-test('GitHubCopilotProvider: emits diagnostic warning when result and fallback extraction both yield no output', async () => {
+test('GitHubCopilotProvider: emits diagnostic warning when only metadata is present and no usable text exists', async () => {
   const events: ProviderProgressEvent[] = [];
   const stdoutData = [
     JSON.stringify({ type: 'assistant.turn_start' }),
-    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ', meta: { id: 'msg-1', status: 'streaming' } } }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ' } }),
     JSON.stringify({ type: 'result', result: { meta: { id: 'r-1', status: 'completed' } } }),
   ].join('\n');
   const mock = makeSpawnMock({ stdoutData });

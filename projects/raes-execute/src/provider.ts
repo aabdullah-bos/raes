@@ -1251,7 +1251,7 @@ function extractDeepPreferredStringInner(
 
   const record = value as Record<string, unknown>;
   for (const key of preferredKeys) {
-    if (ignoredKeys.has(key) || !Object.prototype.hasOwnProperty.call(record, key)) {
+    if (ignoredKeys.has(key) || !Object.hasOwn(record, key)) {
       continue;
     }
     const match = extractDeepPreferredStringInner(

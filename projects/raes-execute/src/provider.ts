@@ -1177,6 +1177,8 @@ const COPILOT_COMMAND_PREFERRED_KEYS = ['command', 'tool_name', 'tool', 'name', 
 const COPILOT_TEXT_PREFERRED_KEY_SET = new Set<string>(COPILOT_TEXT_PREFERRED_KEYS);
 const COPILOT_COMMAND_PREFERRED_KEY_SET = new Set<string>(COPILOT_COMMAND_PREFERRED_KEYS);
 
+// Command extraction is intentionally fenced from response-text fields to avoid
+// treating nested message payloads as command labels during tool event parsing.
 const COPILOT_COMMAND_IGNORED_KEYS = new Set<string>([
   'id',
   'ids',
@@ -1254,7 +1256,7 @@ function extractDeepPreferredStringInner(
 
   const record = value as Record<string, unknown>;
   for (const key of preferredKeys) {
-    if (ignoredKeys.has(key) || !Object.hasOwn(record, key)) {
+    if (!Object.hasOwn(record, key) || ignoredKeys.has(key)) {
       continue;
     }
     const match = extractDeepPreferredStringInner(

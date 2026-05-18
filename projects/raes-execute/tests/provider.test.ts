@@ -678,7 +678,7 @@ test('GitHubCopilotProvider: uses deep nested result text when shallow result fi
     JSON.stringify({
       type: 'result',
       result: {
-        output_text: '   ',
+        output_text: '',
         envelope: {
           content: [{ type: 'text', text: 'Deep nested result output.' }],
         },

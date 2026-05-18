@@ -26,7 +26,7 @@ interface ExecutionLoopDeps {
 
 function writeFinalOutput(output: string, out: (line: string) => void): boolean {
   if (output.trim().length === 0) {
-    out('[warning] Agent completed without any final summary output.');
+    out('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.');
     return false;
   }
   for (const line of output.split('\n')) {

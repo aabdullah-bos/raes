@@ -1101,22 +1101,173 @@ function makeRawLineDebugEvent(line: string): ProviderProgressEvent {
   };
 }
 
-function extractCopilotFinalText(event: Record<string, unknown>): string | undefined {
-  return (
-    readNonEmptyString(event['output_text']) ??
-    readNonEmptyString(event['result']) ??
-    readNonEmptyString(event['text']) ??
-    readNonEmptyString(event['message']) ??
-    readNonEmptyString(readRecord(event['message'])?.['text']) ??
-    readNonEmptyString(readRecord(event['content'])?.['text']) ??
-    readNonEmptyString(readRecord(event['delta'])?.['text'])
+const COPILOT_NO_OUTPUT_DIAGNOSTIC =
+  'Copilot stream ended without usable output. Output recovery fallbacks were attempted but yielded no usable text.';
+
+function hasNonWhitespaceText(text: string | undefined): text is string {
+  return text !== undefined && /\S/.test(text);
+}
+
+function extractCopilotResultText(event: Record<string, unknown>): string | undefined {
+  const result = readRecord(event['result']);
+  const content = readRecord(result?.['content']);
+  const message = readRecord(result?.['message']);
+  const topLevelMessage = readRecord(event['message']);
+  const text = (
+    readString(event['output_text']) ??
+    readString(result?.['output_text']) ??
+    readString(result?.['result']) ??
+    readString(result?.['text']) ??
+    readString(result?.['message']) ??
+    readString(message?.['text']) ??
+    readString(content?.['text']) ??
+    readString(event['result']) ??
+    readString(event['text']) ??
+    readString(event['message']) ??
+    readString(topLevelMessage?.['text'])
   );
+  return hasNonWhitespaceText(text) ? text : undefined;
+}
+
+function extractCopilotAssistantMessageText(event: Record<string, unknown>): string | undefined {
+  const text = (
+    readString(readRecord(event['delta'])?.['text']) ??
+    readString(event['text']) ??
+    readString(event['message']) ??
+    readString(readRecord(event['message'])?.['text']) ??
+    readString(readRecord(event['content'])?.['text'])
+  );
+  return hasNonWhitespaceText(text) ? text : undefined;
+}
+
+function summarizeCopilotEvent(event: Record<string, unknown>): ProviderProgressEvent | undefined {
+  const type = readEventType(event);
+  if (!type) return undefined;
+
+  const command = extractCommandText(event);
+  const exitCode =
+    typeof event['exitCode'] === 'number'
+      ? event['exitCode']
+      : typeof event['exit_code'] === 'number'
+        ? event['exit_code']
+        : undefined;
+  const status = readNonEmptyString(event['status']);
+
+  switch (type) {
+    case 'session.mcp_server_status_changed': {
+      const name = readNonEmptyString(event['name']) ?? readNonEmptyString(event['server']) ?? 'server';
+      const nextStatus = status ?? 'updated';
+      const error = readNonEmptyString(event['error']);
+      return {
+        kind: error ? 'warning' : 'status',
+        text: error ? `MCP ${name} ${nextStatus}: ${error}` : `MCP ${name} ${nextStatus}`,
+        phase: 'unknown',
+        eventType: type,
+      };
+    }
+    case 'session.mcp_servers_loaded':
+      return { kind: 'status', text: 'MCP servers loaded', phase: 'unknown', eventType: type };
+    case 'session.skills_loaded':
+      return { kind: 'status', text: 'Skills loaded', phase: 'unknown', eventType: type };
+    case 'session.tools_updated':
+      return { kind: 'status', text: 'Tools updated', phase: 'unknown', eventType: type };
+    case 'user.message':
+      return { kind: 'status', text: 'User message submitted', phase: 'item', eventType: type };
+    case 'assistant.turn_start':
+      return { kind: 'status', text: 'Agent turn started', phase: 'turn', eventType: type };
+    case 'assistant.turn_end':
+      return { kind: 'status', text: 'Agent turn completed', phase: 'turn', eventType: type };
+    case 'assistant.reasoning_delta':
+    case 'assistant.reasoning': {
+      const delta = extractDeltaText(event) ?? extractCopilotAssistantMessageText(event) ?? 'Reasoning updated';
+      return { kind: 'message', text: delta, phase: 'reasoning', eventType: type, delta };
+    }
+    case 'assistant.message_delta':
+    case 'assistant.message': {
+      const delta = extractCopilotAssistantMessageText(event) ?? 'Agent message updated';
+      return { kind: 'message', text: delta, phase: 'message', eventType: type, delta };
+    }
+    case 'tool.execution_start':
+      return {
+        kind: 'tool',
+        text: command ?? 'Tool execution started',
+        phase: 'command',
+        eventType: type,
+        ...(command ? { command } : {}),
+        item: {
+          kind: 'command_execution',
+          ...(command ? { command } : {}),
+          status: status ?? 'inProgress',
+        },
+      };
+    case 'tool.execution_complete':
+      return {
+        kind: 'status',
+        text: command ?? 'Tool execution completed',
+        phase: 'command',
+        eventType: type,
+        ...(command ? { command } : {}),
+        item: {
+          kind: 'command_execution',
+          ...(command ? { command } : {}),
+          status: status ?? 'completed',
+          ...(exitCode !== undefined ? { exitCode } : {}),
+        },
+      };
+    case 'result':
+      return { kind: 'status', text: 'Result received', phase: 'turn', eventType: type };
+    case 'error':
+      return {
+        kind: 'warning',
+        text: readNonEmptyString(event['message']) ?? 'Copilot reported an error event',
+        phase: 'unknown',
+        eventType: type,
+      };
+    default:
+      return { kind: 'status', text: `Observed ${type}`, phase: 'unknown', eventType: type };
+  }
+}
+
+/**
+ * Stateful Copilot stream accumulator used while parsing JSONL output.
+ * Keeps authoritative output plus fallback buffers for assistant message and raw-line recovery.
+ */
+interface CopilotPromptParseState {
+  finalOutput: string;
+  sawResultEvent: boolean;
+  assistantMessageParts: string[];
+  rawFallbackParts: string[];
+  assistantFallbackText?: string;
+  rawFallbackText?: string;
+  fallbackAttemptedWithoutOutput: boolean;
+}
+
+/**
+ * Recovers best-effort output from Copilot stream fragments when the result payload is empty.
+ * Precedence: assistant message accumulation, then raw non-JSON fallback lines.
+ * Sets `fallbackAttemptedWithoutOutput` when no recovery path produced usable text.
+ */
+function resolveCopilotFallbackOutput(state: CopilotPromptParseState): string {
+  const assistantText = state.assistantFallbackText ?? state.assistantMessageParts.join('');
+  state.assistantFallbackText = assistantText;
+  if (hasNonWhitespaceText(assistantText)) {
+    return assistantText;
+  }
+
+  const rawFallbackText = state.rawFallbackText ?? state.rawFallbackParts.join('\n');
+  state.rawFallbackText = rawFallbackText;
+  if (hasNonWhitespaceText(rawFallbackText)) {
+    return rawFallbackText;
+  }
+
+  state.fallbackAttemptedWithoutOutput = true;
+  return '';
 }
 
 function extractCopilotPromptResultFromLine(
   line: string,
   hooks: ProviderHooks | undefined,
-  state: { finalOutput: string },
+  state: CopilotPromptParseState,
 ): ProviderResult | undefined {
   if (hooks?.rawEvents) {
     emitProgress(hooks, makeRawLineDebugEvent(line));
@@ -1128,9 +1279,8 @@ function extractCopilotPromptResultFromLine(
   } catch {
     const fallbackText = line.trim();
     if (fallbackText.length > 0) {
-      state.finalOutput = state.finalOutput.length > 0
-        ? `${state.finalOutput}\n${fallbackText}`
-        : fallbackText;
+      state.rawFallbackParts.push(fallbackText);
+      state.rawFallbackText = undefined;
     }
     return undefined;
   }
@@ -1140,17 +1290,41 @@ function extractCopilotPromptResultFromLine(
     return undefined;
   }
 
-  if (isCodexCompletedEvent(readEventType(event))) {
-    state.finalOutput = extractCodexCompletedText(event) || state.finalOutput;
+  const eventType = readEventType(event);
+  if (eventType === 'assistant.message' || eventType === 'assistant.message_delta') {
+    const assistantText = extractCopilotAssistantMessageText(event);
+    if (assistantText) {
+      state.assistantMessageParts.push(assistantText);
+      state.assistantFallbackText = undefined;
+    }
+  }
+
+  const progress = summarizeCopilotEvent(event);
+  if (progress) emitProgress(hooks, progress);
+
+  if (eventType === 'result') {
+    state.sawResultEvent = true;
+    const resultText = extractCopilotResultText(event);
+    if (resultText) {
+      state.finalOutput = resultText;
+      return { output: state.finalOutput };
+    }
+    const fallbackOutput = resolveCopilotFallbackOutput(state);
+    state.finalOutput = fallbackOutput;
+    if (!hasNonWhitespaceText(fallbackOutput)) {
+      emitProgress(hooks, {
+        kind: 'warning',
+        text: COPILOT_NO_OUTPUT_DIAGNOSTIC,
+        phase: 'unknown',
+        eventType: 'result',
+      });
+    }
     return { output: state.finalOutput };
   }
 
-  const progress = summarizeCodexEvent(event);
-  if (progress) emitProgress(hooks, progress);
-
-  const finalText = extractCopilotFinalText(event);
-  if (finalText) {
-    state.finalOutput = finalText;
+  if (isCodexCompletedEvent(readEventType(event))) {
+    state.finalOutput = extractCodexCompletedText(event) || state.finalOutput || resolveCopilotFallbackOutput(state);
+    return { output: state.finalOutput };
   }
   return undefined;
 }
@@ -1510,7 +1684,13 @@ export class GitHubCopilotProvider extends OneShotProvider {
 
       let stdoutBuffer = '';
       let stderr = '';
-      const state = { finalOutput: '' };
+      const state: CopilotPromptParseState = {
+        finalOutput: '',
+        sawResultEvent: false,
+        assistantMessageParts: [],
+        rawFallbackParts: [],
+        fallbackAttemptedWithoutOutput: false,
+      };
       let result: ProviderResult | undefined;
 
       child.stdout.on('data', (chunk: Buffer) => {
@@ -1551,6 +1731,19 @@ export class GitHubCopilotProvider extends OneShotProvider {
         if (trailing) {
           state.finalOutput = trailing.output;
           result = trailing;
+        }
+        if (!result) {
+          if (!hasNonWhitespaceText(state.finalOutput)) {
+            state.finalOutput = resolveCopilotFallbackOutput(state);
+          }
+          if (state.fallbackAttemptedWithoutOutput) {
+            emitProgress(hooks, {
+              kind: 'warning',
+              text: COPILOT_NO_OUTPUT_DIAGNOSTIC,
+              phase: 'unknown',
+              eventType: 'result',
+            });
+          }
         }
         resolve(result ?? { output: state.finalOutput });
       });

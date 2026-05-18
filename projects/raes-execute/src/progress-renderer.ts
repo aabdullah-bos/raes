@@ -64,6 +64,21 @@ function isSubstantiveText(text: string | undefined): text is string {
   return /[A-Za-z0-9]/.test(trimmed);
 }
 
+// These Copilot session events are high-frequency startup chatter with low operator value in progress mode.
+const SUPPRESSED_SESSION_EVENTS_IN_PROGRESS = new Set([
+  'session.mcp_servers_loaded',
+  'session.skills_loaded',
+  'session.tools_updated',
+]);
+
+function shouldSuppressUnknownPhaseEvent(event: ProviderProgressEvent, verbosity: ProgressVerbosity): boolean {
+  if (event.kind === 'warning') return false;
+  if (event.eventType?.startsWith('session.')) {
+    return verbosity === 'progress' && SUPPRESSED_SESSION_EVENTS_IN_PROGRESS.has(event.eventType);
+  }
+  return event.eventType !== 'mcpServer/startupStatus/updated';
+}
+
 function summarizeFiles(files: Array<Record<string, unknown>>): string | undefined {
   const paths = files
     .map((file) => typeof file['path'] === 'string' ? file['path'] : typeof file['file'] === 'string' ? file['file'] : undefined)
@@ -161,9 +176,11 @@ function shouldSuppressEvent(event: ProviderProgressEvent, verbosity: ProgressVe
     return true;
   }
 
-  if (event.phase === 'unknown' && event.eventType !== 'mcpServer/startupStatus/updated') {
+  if (event.phase === 'unknown' && shouldSuppressUnknownPhaseEvent(event, verbosity)) {
     return true;
   }
+
+  if (verbosity === 'progress' && event.eventType === 'user.message') return true;
 
   if (verbosity === 'progress' && event.kind === 'tool' && event.phase !== 'command') {
     return true;
@@ -175,12 +192,19 @@ function shouldSuppressEvent(event: ProviderProgressEvent, verbosity: ProgressVe
 export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosity = 'progress'): ProgressRenderer {
   let pendingCommand: PendingCommandEvent | undefined;
   let reasoningSummaryParts: string[] = [];
+  let messageSummaryParts: string[] = [];
   const emittedSemanticLabels = new Set<string>();
 
   function flushReasoningSummary(): void {
     if (reasoningSummaryParts.length === 0) return;
     io.out(`[reasoning] ${reasoningSummaryParts.join(' ')}`);
     reasoningSummaryParts = [];
+  }
+
+  function flushMessageSummary(): void {
+    if (messageSummaryParts.length === 0) return;
+    io.out(`[message] ${messageSummaryParts.join(' ')}`);
+    messageSummaryParts = [];
   }
 
   function flushPendingCommand(): void {
@@ -233,7 +257,10 @@ export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosit
         return;
       }
 
-      if (verbosity === 'progress' && event.eventType === 'item/reasoning/summaryTextDelta') {
+      if (
+        verbosity === 'progress' &&
+        (event.eventType === 'item/reasoning/summaryTextDelta' || event.eventType === 'assistant.reasoning_delta')
+      ) {
         const delta = event.delta?.trim() ?? event.text.trim();
         if (isSubstantiveText(delta)) {
           reasoningSummaryParts.push(delta);
@@ -267,13 +294,21 @@ export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosit
         pendingCommand!.exitCode = event.item?.exitCode ?? pendingCommand!.exitCode;
         if (event.delta) {
           pendingCommand!.deltas.push(event.delta);
-        } else if (event.eventType === 'item/completed' || verbosity === 'debug') {
+        } else if (
+          event.eventType === 'item/completed' ||
+          event.eventType === 'tool.execution_complete' ||
+          verbosity === 'debug'
+        ) {
           flushPendingCommand();
         }
         return;
       }
 
       flushPendingCommand();
+
+      if (verbosity === 'progress' && event.phase !== 'message') {
+        flushMessageSummary();
+      }
 
       if (event.phase === 'plan' && event.plan && event.plan.length > 0) {
         for (const step of event.plan) {
@@ -309,12 +344,28 @@ export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosit
         return;
       }
 
-      if (verbosity === 'progress' && event.eventType === 'item/agentMessage/delta') {
+      if (
+        verbosity === 'progress' &&
+        (event.eventType === 'item/agentMessage/delta' || event.eventType === 'assistant.message_delta')
+      ) {
         const delta = event.delta?.trim() ?? event.text.trim();
         if (!isSubstantiveText(delta)) {
           return;
         }
-        write(`[message] ${delta}`, event.kind === 'warning');
+        messageSummaryParts.push(delta);
+        return;
+      }
+
+      if (
+        verbosity === 'progress' &&
+        (event.eventType === 'assistant.message' || event.eventType === 'item/agentMessage')
+      ) {
+        const text = event.delta?.trim() ?? event.text.trim();
+        if (!isSubstantiveText(text)) {
+          return;
+        }
+        flushMessageSummary();
+        write(`[message] ${text}`, event.kind === 'warning');
         return;
       }
 
@@ -323,6 +374,7 @@ export function createProgressRenderer(io: RenderIO, verbosity: ProgressVerbosit
 
     flush(): void {
       flushReasoningSummary();
+      flushMessageSummary();
       flushPendingCommand();
     },
   };

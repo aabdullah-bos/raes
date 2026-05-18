@@ -313,8 +313,8 @@ test('runReviewLoop: warns when provider completes without any final output', as
       },
     );
     assert.equal(result.exitCode, 0);
-    assert.ok(out.includes('[warning] Agent completed without any final summary output.'));
-    const warningIndex = out.indexOf('[warning] Agent completed without any final summary output.');
+    assert.ok(out.includes('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.'));
+    const warningIndex = out.indexOf('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.');
     const promptIndex = out.indexOf('Agent output shown above. Record this slice as complete? [y/N]');
     assert.ok(warningIndex >= 0 && promptIndex > warningIndex);
   } finally {

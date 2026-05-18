@@ -1,6 +1,6 @@
 > **Source:** This is the tool-optimized derivative of the canonical prompt defined in `docs/raes-reference.md` Section 7. Intentional divergences from that spec are recorded in `docs/decisions.md`. Accidental divergence is drift and must be corrected.
 > 
-Read `docs/raes.config.yaml` first and use it to locate the authoritative
+Read `raes.config.yaml` first and use it to locate the authoritative
 project artifacts for:
 - build intent
 - system constraints
@@ -33,6 +33,11 @@ Rules:
 - implement the minimum code required to make those tests pass
 - run relevant tests and typecheck using the project's existing tooling and
   the configured validation guidance
+- before appending handoff notes, self-check your implementation against all
+  constraints in the configured system-constraints source and durable-decisions
+  source; if your implementation violates any existing constraint, complete the
+  slice, record the violation explicitly in handoff notes, and mark the slice
+  blocked — do not silently resolve the conflict
 - append handoff notes to the configured pipeline file; handoff notes capture
   operational state from this slice only: what was left incomplete, what was
   discovered mid-slice, and what the next operator needs to pick up — do not

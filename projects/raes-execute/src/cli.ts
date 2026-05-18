@@ -2,7 +2,7 @@
 import { realpathSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { checkConfig } from './config.ts';
+import { checkConfig, checkWorkspace, resolveProjectFromWorkspace } from './config.ts';
 import { getPipelineStatus, formatSliceList, formatNextSlice, determineLoopType } from './pipeline.ts';
 import { runExecutionLoop } from './execution-loop.ts';
 import { runReviewLoop } from './review-loop.ts';
@@ -30,6 +30,8 @@ Options:
   -p, --print-artifact     Print the content of a named RAES artifact to stdout
   -e, --execute-next-slice Execute the next unchecked slice (Execution or Review loop)
       --config             Use an explicit raes.config.yaml path
+      --project            Select a project by name from raes.workspace.yaml
+      --workspace          Path to raes.workspace.yaml (used with --project; default: ./raes.workspace.yaml)
       --dry-run            Preflight --execute-next-slice without provider submission or writes
       --verbosity          Progress output: quiet | progress | debug
       --flag               Register an ambiguity, blocking issue, or known problem
@@ -45,6 +47,8 @@ const KNOWN_FLAGS = new Set([
   '--print-artifact', '-p',
   '--execute-next-slice', '-e',
   '--config',
+  '--project',
+  '--workspace',
   '--dry-run',
   '--verbosity',
   '--flag',
@@ -84,6 +88,8 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
 
   let printArtifactName: string | undefined;
   let configPathOverride: string | undefined;
+  let projectName: string | undefined;
+  let workspacePathOverride: string | undefined;
   let dryRun = false;
   let verbosity: ProgressVerbosity = io.verbosity ?? (process.env['RAES_DEBUG_CODEX_EVENTS'] ? 'debug' : 'progress');
 
@@ -118,6 +124,30 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
             return { exitCode: 1 };
           }
           configPathOverride = next;
+          i += 2;
+          continue;
+        }
+        if (arg === '--project') {
+          const next = argv[i + 1];
+          if (next === undefined || next.startsWith('-')) {
+            err(`error: --project requires a project name`);
+            err(`       usage: --project <name>  (project name from raes.workspace.yaml)`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          projectName = next;
+          i += 2;
+          continue;
+        }
+        if (arg === '--workspace') {
+          const next = argv[i + 1];
+          if (next === undefined || next.startsWith('-')) {
+            err(`error: --workspace requires a file path`);
+            err(`       usage: --workspace <path/to/raes.workspace.yaml>`);
+            err(`       run 'raes-execute --help' for usage`);
+            return { exitCode: 1 };
+          }
+          workspacePathOverride = next;
           i += 2;
           continue;
         }
@@ -157,6 +187,38 @@ export async function main(argv: string[], io: IO = {}): Promise<Result> {
     err(`error: --dry-run is only supported with --execute-next-slice`);
     err(`       usage: --execute-next-slice --dry-run`);
     return { exitCode: 1 };
+  }
+
+  if (workspacePathOverride !== undefined && projectName === undefined) {
+    err(`error: --workspace requires --project`);
+    err(`       usage: --project <name> [--workspace <path/to/raes.workspace.yaml>]`);
+    err(`       run 'raes-execute --help' for usage`);
+    return { exitCode: 1 };
+  }
+
+  if (projectName !== undefined && configPathOverride !== undefined) {
+    err(`error: --project and --config are mutually exclusive`);
+    err(`       use --project <name> to select a project from raes.workspace.yaml`);
+    err(`       use --config <path> to point directly to a raes.config.yaml file`);
+    return { exitCode: 1 };
+  }
+
+  if (projectName !== undefined) {
+    const { workspace, workspaceRoot, errors: wsErrors } = checkWorkspace(cwd, workspacePathOverride);
+    if (wsErrors.length > 0) {
+      for (const e of wsErrors) {
+        err(`error: ${e.message}`);
+        if (e.fix) err(`  fix:   ${e.fix}`);
+      }
+      return { exitCode: 2 };
+    }
+    const { configPath: projConfigPath, error } = resolveProjectFromWorkspace(workspace!, workspaceRoot!, projectName);
+    if (error) {
+      err(`error: ${error.message}`);
+      if (error.fix) err(`  fix:   ${error.fix}`);
+      return { exitCode: 2 };
+    }
+    configPathOverride = projConfigPath;
   }
 
   if (argv.includes('--check-config') || argv.includes('-c')) {

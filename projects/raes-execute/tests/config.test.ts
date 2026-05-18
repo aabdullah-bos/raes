@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { rmSync } from 'node:fs';
 
-import { parseYaml, extractConfig, validatePaths, checkConfig } from '../src/config.ts';
+import { parseYaml, extractConfig, validatePaths, checkConfig, extractWorkspace, checkWorkspace, resolveProjectFromWorkspace } from '../src/config.ts';
 
 // ---------------------------------------------------------------------------
 // parseYaml
@@ -543,3 +543,212 @@ test('extractConfig: optional model field does not error', () => {
   assert.ok(config, 'expected config');
   assert.equal(config.provider.model, 'claude-opus-4-7');
 });
+
+// ---------------------------------------------------------------------------
+// extractWorkspace
+// ---------------------------------------------------------------------------
+
+const VALID_WORKSPACE_PARSED = {
+  projects: {
+    'raes-execute': { config: 'projects/raes-execute/raes.config.yaml' },
+    'raes-init': { config: 'projects/raes-init/raes.config.yaml' },
+  },
+};
+
+test('extractWorkspace: valid projects-only workspace returns no errors', () => {
+  const { workspace, errors } = extractWorkspace(VALID_WORKSPACE_PARSED as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(workspace, 'expected workspace');
+  assert.deepEqual(workspace.projects['raes-execute'], { config: 'projects/raes-execute/raes.config.yaml' });
+  assert.deepEqual(workspace.shared_sources, {});
+});
+
+test('extractWorkspace: valid workspace with shared_sources returns them', () => {
+  const data = {
+    ...VALID_WORKSPACE_PARSED,
+    shared_sources: { raes_reference: 'docs/raes-reference.md' },
+  };
+  const { workspace, errors } = extractWorkspace(data as Record<string, unknown>);
+  assert.equal(errors.length, 0);
+  assert.ok(workspace, 'expected workspace');
+  assert.equal(workspace.shared_sources['raes_reference'], 'docs/raes-reference.md');
+});
+
+test('extractWorkspace: missing projects section reports error', () => {
+  const { workspace, errors } = extractWorkspace({});
+  assert.equal(errors.length, 1);
+  assert.ok(!workspace);
+  assert.ok(errors[0].message.includes("missing required section 'projects'"));
+  assert.ok(errors[0].fix);
+});
+
+test('extractWorkspace: project with non-object entry reports error', () => {
+  const data = { projects: { 'bad-project': 'not-an-object' } };
+  const { errors } = extractWorkspace(data as Record<string, unknown>);
+  assert.ok(errors.some((e) => e.field === 'projects.bad-project'));
+});
+
+test('extractWorkspace: project with empty config reports error', () => {
+  const data = { projects: { 'bad-project': { config: '' } } };
+  const { errors } = extractWorkspace(data as Record<string, unknown>);
+  assert.ok(errors.some((e) => e.field === 'projects.bad-project.config'));
+  assert.ok(errors[0].fix);
+});
+
+test('extractWorkspace: empty projects object reports error', () => {
+  const { errors } = extractWorkspace({ projects: {} });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].message.includes('no projects defined'));
+});
+
+test('extractWorkspace: invalid shared_sources type reports error', () => {
+  const data = { ...VALID_WORKSPACE_PARSED, shared_sources: 'not-an-object' };
+  const { errors } = extractWorkspace(data as Record<string, unknown>);
+  assert.ok(errors.some((e) => e.field === 'shared_sources'));
+});
+
+test('extractWorkspace: shared_sources entry with empty path reports error', () => {
+  const data = { ...VALID_WORKSPACE_PARSED, shared_sources: { raes_reference: '' } };
+  const { errors } = extractWorkspace(data as Record<string, unknown>);
+  assert.ok(errors.some((e) => e.field === 'shared_sources.raes_reference'));
+  assert.ok(errors[0].fix);
+});
+
+// ---------------------------------------------------------------------------
+// checkWorkspace
+// ---------------------------------------------------------------------------
+
+const VALID_WORKSPACE_YAML = `
+projects:
+  raes-execute:
+    config: raes-execute/raes.config.yaml
+  raes-init:
+    config: raes-init/raes.config.yaml
+`;
+
+const VALID_PROJECT_CONFIG_YAML = `
+project:
+  name: test-project
+sources:
+  build_intent: docs/prd.md
+  system_constraints: docs/system.md
+  next_slice:
+    path: docs/pipeline.md
+    selection_rule: first_unchecked_slice
+  durable_decisions: docs/decisions.md
+  execution_guidance: docs/execution-guidance.md
+  validation: docs/validation.md
+provider:
+  name: anthropic
+`;
+
+async function makeWorkspaceDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'raes-ws-test-'));
+  await writeFile(join(dir, 'raes.workspace.yaml'), VALID_WORKSPACE_YAML);
+  for (const proj of ['raes-execute', 'raes-init']) {
+    await mkdir(join(dir, proj), { recursive: true });
+    await writeFile(join(dir, proj, 'raes.config.yaml'), VALID_PROJECT_CONFIG_YAML);
+  }
+  return dir;
+}
+
+test('checkWorkspace: valid workspace file returns workspace and workspaceRoot', async () => {
+  const dir = await makeWorkspaceDir();
+  try {
+    const { workspace, workspaceRoot, errors } = checkWorkspace(dir);
+    assert.equal(errors.length, 0);
+    assert.ok(workspace, 'expected workspace');
+    assert.equal(workspaceRoot, dir);
+    assert.ok('raes-execute' in workspace.projects);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('checkWorkspace: missing workspace file reports error with fix', () => {
+  const { errors } = checkWorkspace('/tmp/nonexistent-ws-dir-' + Date.now());
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].message.includes('raes.workspace.yaml not found'));
+  assert.ok(errors[0].fix);
+});
+
+test('checkWorkspace: explicit workspace path resolves correctly', async () => {
+  const dir = await makeWorkspaceDir();
+  try {
+    const wsPath = join(dir, 'raes.workspace.yaml');
+    const { workspace, errors } = checkWorkspace('/tmp', wsPath);
+    assert.equal(errors.length, 0);
+    assert.ok(workspace, 'expected workspace');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('checkWorkspace: workspace with missing project config file reports error with fix', async () => {
+  const dir = await makeWorkspaceDir();
+  try {
+    rmSync(join(dir, 'raes-execute', 'raes.config.yaml'));
+    const { errors } = checkWorkspace(dir);
+    assert.equal(errors.length, 1);
+    assert.ok(errors[0].message.includes('raes-execute/raes.config.yaml'));
+    assert.ok(errors[0].fix);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('checkWorkspace: workspace with missing shared_source file reports error with fix', async () => {
+  const dir = await makeWorkspaceDir();
+  try {
+    const wsWithShared = VALID_WORKSPACE_YAML + `\nshared_sources:\n  raes_reference: docs/raes-reference.md\n`;
+    await writeFile(join(dir, 'raes.workspace.yaml'), wsWithShared);
+    const { errors } = checkWorkspace(dir);
+    assert.equal(errors.length, 1);
+    assert.ok(errors[0].field === 'shared_sources.raes_reference');
+    assert.ok(errors[0].fix);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('checkWorkspace: shared_source that exists passes validation', async () => {
+  const dir = await makeWorkspaceDir();
+  try {
+    await writeFile(join(dir, 'shared.md'), '# shared');
+    const wsWithShared = VALID_WORKSPACE_YAML + `\nshared_sources:\n  shared_doc: shared.md\n`;
+    await writeFile(join(dir, 'raes.workspace.yaml'), wsWithShared);
+    const { workspace, errors } = checkWorkspace(dir);
+    assert.equal(errors.length, 0);
+    assert.equal(workspace!.shared_sources['shared_doc'], 'shared.md');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// resolveProjectFromWorkspace
+// ---------------------------------------------------------------------------
+
+test('resolveProjectFromWorkspace: known project returns absolute config path', () => {
+  const workspace = {
+    projects: { 'raes-execute': { config: 'projects/raes-execute/raes.config.yaml' } },
+    shared_sources: {},
+  };
+  const { configPath, error } = resolveProjectFromWorkspace(workspace, '/repo', 'raes-execute');
+  assert.ok(!error);
+  assert.equal(configPath, '/repo/projects/raes-execute/raes.config.yaml');
+});
+
+test('resolveProjectFromWorkspace: unknown project returns error with known project list', () => {
+  const workspace = {
+    projects: { 'raes-execute': { config: 'projects/raes-execute/raes.config.yaml' } },
+    shared_sources: {},
+  };
+  const { configPath, error } = resolveProjectFromWorkspace(workspace, '/repo', 'unknown-project');
+  assert.ok(!configPath);
+  assert.ok(error);
+  assert.ok(error.message.includes('unknown-project'));
+  assert.ok(error.message.includes('raes-execute'));
+  assert.ok(error.fix);
+});
+

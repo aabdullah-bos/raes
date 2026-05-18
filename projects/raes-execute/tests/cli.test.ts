@@ -1301,3 +1301,150 @@ test('--check-config reports all missing artifacts with individual fix blocks', 
     rmSync(dir, { recursive: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// --project / --workspace
+// ---------------------------------------------------------------------------
+
+const WORKSPACE_YAML = `
+projects:
+  demo:
+    config: projects/demo/raes.config.yaml
+`;
+
+async function makeWorkspaceProject(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'raes-cli-ws-test-'));
+  await mkdir(join(dir, 'projects', 'demo', 'docs'), { recursive: true });
+  for (const f of ALL_ARTIFACT_PATHS) {
+    await writeFile(join(dir, 'projects', 'demo', f), '# stub');
+  }
+  await writeFile(join(dir, 'projects', 'demo', 'raes.config.yaml'), VALID_CONFIG_YAML);
+  await writeFile(join(dir, 'raes.workspace.yaml'), WORKSPACE_YAML);
+  return dir;
+}
+
+test('--project resolves config via workspace map and runs --check-config', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--project', 'demo'],
+      { out: (l) => out.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 0, 'expected exit 0 with valid project from workspace');
+    assert.ok(out.join('\n').includes('OK'), 'expected OK in check-config output');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--project with --workspace locates workspace at explicit path', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--project', 'demo', '--workspace', join(dir, 'raes.workspace.yaml')],
+      { out: (l) => out.push(l), cwd: '/tmp' },
+    );
+    assert.equal(exitCode, 0, 'expected exit 0 with explicit workspace path');
+    assert.ok(out.join('\n').includes('OK'));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--project exits 2 with actionable message when project name is not in workspace', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--project', 'unknown-project'],
+      { err: (l) => errs.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 2);
+    const full = errs.join('\n');
+    assert.ok(full.includes('unknown-project'), 'expected project name in error');
+    assert.ok(full.includes('demo'), 'expected known projects listed in error');
+    assert.ok(full.includes('fix:'), 'expected fix guidance');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--project exits 2 with actionable message when workspace file is missing', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'raes-cli-ws-missing-'));
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--project', 'demo'],
+      { err: (l) => errs.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 2);
+    const full = errs.join('\n');
+    assert.ok(full.includes('raes.workspace.yaml not found'), 'expected workspace-not-found error');
+    assert.ok(full.includes('fix:'), 'expected fix guidance');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--workspace without --project exits 1 with usage message', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--workspace', join(dir, 'raes.workspace.yaml')],
+      { err: (l) => errs.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(errs.join('\n').includes('--workspace requires --project'));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--project and --config together exit 1 with mutually-exclusive error', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    const errs: string[] = [];
+    const { exitCode } = await main(
+      ['--check-config', '--project', 'demo', '--config', join(dir, 'projects', 'demo', 'raes.config.yaml')],
+      { err: (l) => errs.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(errs.join('\n').includes('mutually exclusive'));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('--project without a value exits 1 with usage message', async () => {
+  const errs: string[] = [];
+  const { exitCode } = await main(['--project'], { err: (l) => errs.push(l) });
+  assert.equal(exitCode, 1);
+  assert.ok(errs.join('\n').includes('--project requires a project name'));
+});
+
+test('--workspace without a value exits 1 with usage message', async () => {
+  const errs: string[] = [];
+  const { exitCode } = await main(['--workspace'], { err: (l) => errs.push(l) });
+  assert.equal(exitCode, 1);
+  assert.ok(errs.join('\n').includes('--workspace requires a file path'));
+});
+
+test('--project resolves config for --status', async () => {
+  const dir = await makeWorkspaceProject();
+  try {
+    await writeFile(join(dir, 'projects', 'demo', 'docs/pipeline.md'), PIPELINE_WITH_MIXED_SLICES);
+    const out: string[] = [];
+    const { exitCode } = await main(
+      ['--status', '--project', 'demo'],
+      { out: (l) => out.push(l), cwd: dir },
+    );
+    assert.equal(exitCode, 0);
+    assert.ok(out.join('\n').includes('test-project'), 'expected project name from workspace-resolved config');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+

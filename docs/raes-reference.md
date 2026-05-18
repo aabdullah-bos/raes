@@ -359,6 +359,7 @@ Current status: not yet implemented. The canonical prompt (Section 6) is the man
 
 ## 7. The Canonical Prompt Structure
 
+> **Derivative:** `projects/raes-execute/execution-loop.md` is the tool-optimized derivative of the canonical prompt defined here. It is permitted to diverge where `raes-execute`'s mechanical needs require it. Every intentional divergence is recorded in `projects/raes-execute/docs/decisions.md`.
 The prompt structure separates three concerns:
 
 - **Config** tells the agent where truth lives
@@ -405,6 +406,8 @@ Rules:
 - implement the minimum code required to make those tests pass
 - run relevant tests and typecheck using the project's existing tooling and
   the configured validation guidance
+- before appending handoff notes, self-check your implementation against all constraints in the
+  configured system-constraints source and durable-decisions source; if your implementation violates any existing constraint, complete the slice, record the violation explicitly in handoff notes, and mark the slice blocked — do not silently resolve the conflict
 - append handoff notes to the configured pipeline file; handoff notes capture
   operational state from this slice only: what was left incomplete, what was
   discovered mid-slice, and what the next operator needs to pick up — do not
@@ -571,3 +574,74 @@ The schema was defined and implemented in an Execution Slice (2026-04-19). `raes
 **Gap 6: Archetype coverage is narrow and undocumented** ✓ Partially resolved 2026-04-20
 
 `archetypes/cli-doc-generator/README.md` added in a Review Slice (2026-04-20). It documents: what the templates are for, how they relate to generated output (reference only, not consumed by `raes-init`), what `raes-init` actually generates, and the V1 archetype contract. The contract between archetypes and generation logic will be formalized before a second archetype is implemented — that formalization is the remaining open work.
+
+---
+
+**Gap 7: Flag classification and handling were not defined** ✓ Resolved 2026-05-17
+
+FLAG trigger points, gating behavior, and operator resolution paths are now defined in Section 12. The canonical prompt (Section 7) has been updated to enforce the mid-execution self-check against `system.md` and `decisions.md` constraints.
+
+## 12. Flag Classification and Handling
+
+This section defines what constitutes a FLAG, when flags are gating, and what the resolution path looks like. It applies to both slice types.
+
+---
+
+### 12.1 FLAG vs SURFACE
+
+These are two distinct events that are often conflated:
+
+- **FLAG** — guidance is missing, conflicting, or an implementation decision violates an existing constraint. May pause or block execution.
+- **SURFACE** — new scope is discovered during execution that was not in the PRD or pipeline. Handled via the Parking Lot (Section 10). Does not raise a FLAG.
+
+---
+
+### 12.2 Trigger points
+
+FLAGS are raised at two points in the loop:
+
+**Pre-execution** — before a slice begins, the agent checks:
+- Does the slice goal conflict with PRD intent?
+- Do any two authoritative sources (e.g. `system.md` vs `execution-guidance.md`) contradict each other on a constraint relevant to this slice?
+- Are required artifacts missing or unreadable?
+
+If any pre-execution check fails, the slice does not start. The flag is raised and the operator must resolve it before execution proceeds.
+
+**Mid-execution** — during EXECUTE, the agent self-checks its implementation against `system.md` and `decisions.md`. If an implementation decision violates an existing constraint, the agent completes the slice but marks it blocked pending operator resolution. The next slice does not start until the flag is resolved.
+
+The mid-execution check is prompt-enforced, not code-enforced. The canonical prompt instructs the agent to verify its implementation against `system.md` and `decisions.md` constraints before appending handoff notes.
+
+---
+
+### 12.3 Flag classification table
+
+| Condition | Trigger point | Gating behavior |
+|---|---|---|
+| Slice goal conflicts with PRD intent | Pre-execution | Hard stop — slice does not start |
+| Two authoritative sources conflict | Pre-execution | Hard stop — slice does not start |
+| Required artifact missing or unreadable | Pre-execution | Hard stop — slice does not start |
+| Implementation decision violates constraint in `system.md` | Mid-execution | Slice completes, marked blocked |
+| Implementation decision violates constraint in `decisions.md` | Mid-execution | Slice completes, marked blocked |
+
+---
+
+### 12.4 Resolution path
+
+**Pre-execution flags:**
+Operator resolves the conflict or supplies the missing artifact. Slice restarts from the beginning once resolved. Resolution is recorded in `decisions.md` if a new durable constraint results.
+
+**Mid-execution flags:**
+Slice is marked blocked in `pipeline.md`. Operator reviews the flagged violation and takes one of three actions:
+1. Amends the implementation — adds a new slice to correct the violation
+2. Promotes a constraint change — updates `system.md` or `decisions.md` to reflect a new decision, with rationale recorded
+3. Dismisses the flag — records rationale in `decisions.md` explaining why the violation is acceptable in this case
+
+The next slice does not start until one of these three actions is taken and recorded.
+
+---
+
+### 12.5 What does not raise a FLAG
+
+- Handoff observations (things worth noting but not blocking) — go in pipeline handoff notes, not as flags
+- New scope discovered during execution — goes to the Parking Lot (Section 10), not a flag
+- Implementation choices that are ambiguous but not in conflict with any existing constraint — agent proceeds using best judgment, notes the choice in handoff notes

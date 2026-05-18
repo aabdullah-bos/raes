@@ -377,6 +377,34 @@ test('runExecutionLoop: provider error exits 2 without writing', async () => {
   }
 });
 
+test('runExecutionLoop: missing provider binary exits 2 without writing', async () => {
+  const dir = await makeProject();
+  try {
+    const err: string[] = [];
+    const result = await runExecutionLoop(
+      { position: 1, label: 'Slice 1: Run execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      { out: () => {}, err: (line) => err.push(line), in: async () => 'y' },
+      {
+        provider: providerReturning({
+          output: '',
+          error: 'codex binary missing: spawn codex ENOENT',
+          fix: 'Install Codex CLI or make `codex` available on PATH, then retry.',
+        }),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 2);
+    assert.ok(err.includes('error: codex binary missing: spawn codex ENOENT'));
+    assert.ok(err.includes('fix: Install Codex CLI or make `codex` available on PATH, then retry.'));
+    const pipeline = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(pipeline.includes('- [ ] Slice 1: Run execution loop'));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('runExecutionLoop: warns when provider completes without any final output', async () => {
   const dir = await makeProject();
   try {

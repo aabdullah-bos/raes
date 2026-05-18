@@ -523,13 +523,15 @@
     persistence and assert structured error classification, fix guidance, and
     no artifact write in CLI-path execution.
 
-- [ ] Slice 13g-1: Add missing-binary handling for provider subprocesses.
-  - Detect the case where `claude` or `codex` is not installed or not present
+- [x] Slice 13g-1: Add missing-binary handling for provider subprocesses.
+  - Detect the case where `claude`, `codex` or `copilot` is not installed or not present
     on PATH before or during subprocess spawn, and return a structured
     ProviderResult error with an actionable fix string.
   - Anthropic fix guidance must tell the operator to install Claude Code or
     make `claude` available on PATH. OpenAI fix guidance must tell the
     operator to install Codex CLI or make `codex` available on PATH.
+    Copilot fix guidance must tell the
+    operator to install Copilot CLI or make `copilot` available on PATH.
   - Execution and review loops must surface these errors on stderr and exit 2
     without writing any artifact.
   - Tests: mock spawn failure / ENOENT for both providers; assert fix guidance
@@ -1360,3 +1362,21 @@ provider: {
 - `docs/pipeline.md` still contains historical handoff prose claiming `Slice Omega-1` was marked complete while the backlog entry remains unchecked. Per the recorded RAES rule that only the parent loop may mark backlog completion after explicit operator confirmation, this review left the unchecked backlog line unchanged and treated it as the source of truth.
 
 **Next recommended slice:** `Slice 13o-1` remains the correct follow-on slice because it addresses the concrete operator-blocking app-server failure mode already discovered and not yet covered by implementation or tests.
+
+### Slice 13g-1 — 2026-05-18
+
+**Implemented in this slice.**
+- Added structured missing-binary handling for provider subprocess startup in `src/provider.ts`.
+- One-shot providers now catch synchronous spawn failures for `claude`, `codex`, and `copilot` and return `ProviderResult` errors with provider-specific install/PATH fix guidance instead of throwing.
+- App-server startup now classifies `spawn codex ENOENT` as a missing-binary failure with the same actionable guidance instead of a generic transport-startup failure.
+
+**Tests and validation.**
+- Added provider coverage for missing `claude`, `codex`, and `copilot` binaries in `tests/provider.test.ts`.
+- Added execution/review loop coverage confirming missing-binary provider errors still surface on `stderr`, exit `2`, and do not write the pipeline.
+- Validation passed: `npm test`; `npm run typecheck`.
+
+**Operational notes for next operator.**
+- Loop behavior was intentionally left unchanged beyond provider error classification: execution/review loops still print `error:` / `fix:` on `stderr`, exit `2`, and write no artifacts on provider failure.
+- No durable guidance or decision change was required for this slice.
+
+**Next recommended slice:** `Slice 13h-1` — clearer provider/preflight output and finer-grained runtime failure labeling builds directly on the new missing-binary classification now in place.

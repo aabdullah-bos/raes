@@ -270,6 +270,34 @@ test('runReviewLoop: provider error exits 2 without writing', async () => {
   }
 });
 
+test('runReviewLoop: missing provider binary exits 2 without writing', async () => {
+  const dir = await makeProject();
+  try {
+    const err: string[] = [];
+    const result = await runReviewLoop(
+      { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
+      VALID_CONFIG,
+      dir,
+      { out: () => {}, err: (line) => err.push(line), in: async () => 'y' },
+      {
+        provider: providerReturning({
+          output: '',
+          error: 'claude binary missing: spawn claude ENOENT',
+          fix: 'Install Claude Code or make `claude` available on PATH, then retry.',
+        }),
+        loadPrompt: () => 'prompt text',
+      },
+    );
+    assert.equal(result.exitCode, 2);
+    assert.ok(err.includes('error: claude binary missing: spawn claude ENOENT'));
+    assert.ok(err.includes('fix: Install Claude Code or make `claude` available on PATH, then retry.'));
+    const pipeline = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(pipeline.includes('- [ ] Slice 1: Review the execution loop'));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('runReviewLoop: warns when provider completes without any final output', async () => {
   const dir = await makeProject();
   try {

@@ -150,22 +150,50 @@ interface AppServerErrorProfile {
   transportLabel: string;
   providerName: 'openai' | 'github_copilot';
   loginCommand: string;
+  cliCommand: string;
+  installLabel: string;
 }
 
 const CODEX_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
   transportLabel: 'codex app-server',
   providerName: 'openai',
   loginCommand: 'codex login',
+  cliCommand: 'codex',
+  installLabel: 'Codex CLI',
 };
 
 const COPILOT_APP_SERVER_ERROR_PROFILE: AppServerErrorProfile = {
   transportLabel: 'copilot app-server',
   providerName: 'github_copilot',
   loginCommand: 'copilot auth login',
+  cliCommand: 'copilot',
+  installLabel: 'Copilot CLI',
 };
+
+function isMissingBinaryError(message: string, cliCommand: string): boolean {
+  return (
+    /\bENOENT\b/i.test(message) &&
+    (message.includes(`spawn ${cliCommand}`) || message.includes(`'${cliCommand}'`) || message.includes(`"${cliCommand}"`))
+  );
+}
+
+function makeMissingBinaryResult(
+  cliCommand: string,
+  installLabel: string,
+  transportLabel = cliCommand,
+): ProviderResult {
+  return {
+    output: '',
+    error: `${transportLabel} binary missing: spawn ${cliCommand} ENOENT`,
+    fix: `Install ${installLabel} or make \`${cliCommand}\` available on PATH, then retry.`,
+  };
+}
 
 function formatAppServerError(error: unknown, profile: AppServerErrorProfile): ProviderResult {
   const message = toErrorMessage(error);
+  if (isMissingBinaryError(message, profile.cliCommand)) {
+    return makeMissingBinaryResult(profile.cliCommand, profile.installLabel, profile.transportLabel);
+  }
   if (AUTH_ERROR_RE.test(message)) {
     return {
       output: '',
@@ -1156,7 +1184,21 @@ export class ClaudeCodeProvider extends OneShotProvider {
     }
 
     return new Promise((resolve) => {
-      const child = this.spawnFn('claude', args);
+      let child: ReturnType<SpawnFn>;
+      try {
+        child = this.spawnFn('claude', args);
+      } catch (error) {
+        const message = toErrorMessage(error);
+        if (isMissingBinaryError(message, 'claude')) {
+          resolve(makeMissingBinaryResult('claude', 'Claude Code'));
+          return;
+        }
+        resolve({
+          output: '',
+          error: `Failed to spawn claude subprocess: ${message}`,
+        });
+        return;
+      }
 
       if (!child.stdin || !child.stdout || !child.stderr) {
         resolve({
@@ -1248,7 +1290,22 @@ export class CodexProvider extends OneShotProvider {
     }
 
     return new Promise((resolve) => {
-      const child = this.spawnFn(this.cliCommand, args);
+      let child: ReturnType<SpawnFn>;
+      try {
+        child = this.spawnFn(this.cliCommand, args);
+      } catch (error) {
+        const message = toErrorMessage(error);
+        if (isMissingBinaryError(message, this.cliCommand)) {
+          const installLabel = this.cliCommand === 'copilot' ? 'Copilot CLI' : 'Codex CLI';
+          resolve(makeMissingBinaryResult(this.cliCommand, installLabel));
+          return;
+        }
+        resolve({
+          output: '',
+          error: `Failed to spawn ${this.cliCommand} subprocess: ${message}`,
+        });
+        return;
+      }
 
       if (!child.stdin || !child.stdout || !child.stderr) {
         resolve({

@@ -224,6 +224,19 @@ test('ClaudeCodeProvider: subprocess exits non-zero with auth error output retur
   assert.match(result.fix, /claude login/, 'expected fix to mention claude login');
 });
 
+test('ClaudeCodeProvider: missing claude binary returns structured error with install guidance', async () => {
+  const spawnFn: SpawnFn = () => {
+    throw new Error('spawn claude ENOENT');
+  };
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /binary missing/i);
+  assert.match(result.error ?? '', /claude/i);
+  assert.match(result.fix ?? '', /install Claude Code/i);
+  assert.match(result.fix ?? '', /PATH/i);
+});
+
 test('ClaudeCodeProvider: passes prompt via stdin, not in args', async () => {
   const mock = makeSpawnMock();
   const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
@@ -310,6 +323,19 @@ test('CodexProvider: subprocess exits non-zero with auth error output returns Pr
   assert.ok(result.error, 'expected error field to be set');
   assert.ok(result.fix, 'expected fix field to be set');
   assert.match(result.fix, /codex login/, 'expected fix to mention codex login');
+});
+
+test('CodexProvider: missing codex binary returns structured error with install guidance', async () => {
+  const spawnFn: SpawnFn = () => {
+    throw new Error('spawn codex ENOENT');
+  };
+  const provider = new CodexProvider(makeConfig('openai'), spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /binary missing/i);
+  assert.match(result.error ?? '', /codex/i);
+  assert.match(result.fix ?? '', /install Codex CLI/i);
+  assert.match(result.fix ?? '', /PATH/i);
 });
 
 test('CodexProvider: passes prompt via stdin, not in args', async () => {
@@ -404,6 +430,19 @@ test('GitHubCopilotProvider: auth failure includes copilot auth login guidance',
   assert.equal(result.output, '');
   assert.match(result.error ?? '', /copilot subprocess exited/i);
   assert.match(result.fix ?? '', /copilot auth login/i);
+});
+
+test('GitHubCopilotProvider: missing copilot binary returns structured error with install guidance', async () => {
+  const spawnFn: SpawnFn = () => {
+    throw new Error('spawn copilot ENOENT');
+  };
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /binary missing/i);
+  assert.match(result.error ?? '', /copilot/i);
+  assert.match(result.fix ?? '', /install Copilot CLI/i);
+  assert.match(result.fix ?? '', /PATH/i);
 });
 
 test('CodexAppServerSession: starts codex app-server over stdio and sends initialize handshake', async () => {
@@ -1172,7 +1211,7 @@ test('CodexAppServerSession: thread/start session-state failure returns actionab
   assert.match(result.fix ?? '', /codex login/i);
 });
 
-test('CodexAppServerSession: startup failure returns a structured transport error', async () => {
+test('CodexAppServerSession: missing codex binary returns structured error with install guidance', async () => {
   const spawnFn: SpawnFn = () => {
     throw new Error('spawn codex ENOENT');
   };
@@ -1184,8 +1223,10 @@ test('CodexAppServerSession: startup failure returns a structured transport erro
 
   const result = await session.submitTurn('Implement the slice');
   assert.equal(result.output, '');
-  assert.match(result.error ?? '', /transport startup failure/i);
-  assert.match(result.error ?? '', /ENOENT/i);
+  assert.match(result.error ?? '', /binary missing/i);
+  assert.match(result.error ?? '', /codex/i);
+  assert.match(result.fix ?? '', /install Codex CLI/i);
+  assert.match(result.fix ?? '', /PATH/i);
 });
 
 test('CodexAppServerSession: JSON-RPC timeout returns a structured protocol error', async () => {

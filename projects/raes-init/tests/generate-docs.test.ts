@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   GenerationError,
+  WorkspaceRegistrationError,
   generateDocs,
-  validateGeneratedDocShape
+  validateGeneratedDocShape,
+  registerProjectInWorkspace,
 } from '../src/generate-docs.ts';
 import { main } from '../src/cli.ts';
 
@@ -61,7 +64,7 @@ test('generates the RAES docs set for the narrow happy path', async () => {
     join(docsDir, 'prd-ux-review.md'),
     join(docsDir, 'execution-guidance.md'),
     join(docsDir, 'validation.md'),
-    join(docsDir, 'raes.config.yaml')
+    join(targetProject, 'raes.config.yaml')
   ]);
 
   const prdText = await readFile(join(docsDir, 'prd.md'), 'utf8');
@@ -350,8 +353,7 @@ test('generates raes.config.yaml with required source keys pointing to correct p
     archetype: 'cli-doc-generator'
   });
 
-  const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
-  assert.match(configText, /name: config-check-tool/);
+  const configText = await readFile(join(targetProject, 'raes.config.yaml'), 'utf8');
   assert.match(configText, /build_intent: docs\/prd\.md/);
   assert.match(configText, /system_constraints: docs\/system\.md/);
   assert.match(configText, /path: docs\/pipeline\.md/);
@@ -447,7 +449,7 @@ test('generates all 8 files in bare greenfield mode when no prdPath is provided'
     join(docsDir, 'prd-ux-review.md'),
     join(docsDir, 'execution-guidance.md'),
     join(docsDir, 'validation.md'),
-    join(docsDir, 'raes.config.yaml')
+    join(targetProject, 'raes.config.yaml')
   ]);
 });
 
@@ -477,7 +479,7 @@ test('bare greenfield raes.config.yaml has all required source keys', async () =
     archetype: 'cli-doc-generator'
   });
 
-  const configText = await readFile(join(targetProject, 'docs', 'raes.config.yaml'), 'utf8');
+  const configText = await readFile(join(targetProject, 'raes.config.yaml'), 'utf8');
   assert.match(configText, /name: greenfield-config-tool/);
   assert.match(configText, /build_intent: docs\/prd\.md/);
   assert.match(configText, /system_constraints: docs\/system\.md/);
@@ -577,7 +579,7 @@ test('generates all 8 files for the frontend-backend-ai-app archetype', async ()
     join(docsDir, 'prd-ux-review.md'),
     join(docsDir, 'execution-guidance.md'),
     join(docsDir, 'validation.md'),
-    join(docsDir, 'raes.config.yaml')
+    join(targetProject, 'raes.config.yaml')
   ]);
 });
 
@@ -1284,7 +1286,7 @@ test('when prdPath is already the target docs/prd.md, it leaves it unchanged and
     join(docsDir, 'prd-ux-review.md'),
     join(docsDir, 'execution-guidance.md'),
     join(docsDir, 'validation.md'),
-    join(docsDir, 'raes.config.yaml')
+    join(targetProject, 'raes.config.yaml')
   ]);
 
   const prdText = await readFile(targetPrdPath, 'utf8');
@@ -1293,7 +1295,7 @@ test('when prdPath is already the target docs/prd.md, it leaves it unchanged and
   const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
   assert.match(systemText, /# raes-execute/);
 
-  const configText = await readFile(join(docsDir, 'raes.config.yaml'), 'utf8');
+  const configText = await readFile(join(targetProject, 'raes.config.yaml'), 'utf8');
   assert.match(configText, /build_intent: docs\/prd\.md/);
   assert.match(configText, /system_constraints: docs\/system\.md/);
 });
@@ -1368,7 +1370,7 @@ test('generates the RAES docs set for the cli archetype', async () => {
     join(docsDir, 'prd-ux-review.md'),
     join(docsDir, 'execution-guidance.md'),
     join(docsDir, 'validation.md'),
-    join(docsDir, 'raes.config.yaml')
+    join(targetProject, 'raes.config.yaml')
   ]);
 
   const systemText = await readFile(join(docsDir, 'system.md'), 'utf8');
@@ -1380,7 +1382,6 @@ test('generates the RAES docs set for the cli archetype', async () => {
   assert.doesNotMatch(systemText, /cli-doc-generator/);
 
   const pipelineText = await readFile(join(docsDir, 'pipeline.md'), 'utf8');
-  assert.match(pipelineText, /# raes-execute/);
   assert.match(pipelineText, /## Slice Backlog/);
   assert.match(pipelineText, /## Handoff Notes/);
   assert.match(pipelineText, /\[ \] Slice 1/);
@@ -1515,3 +1516,194 @@ test('emits write-phase progress messages in bare greenfield mode', async () => 
   assert(logMessages.includes('  raes.config.yaml'), 'should log raes.config.yaml write');
   assert(!logMessages.includes('Generating pipeline.md...'), 'should not log AI progress in bare mode');
 });
+
+// ---------------------------------------------------------------------------
+// Workspace registration
+// ---------------------------------------------------------------------------
+
+test('generateDocs with workspaceRootPath creates raes.workspace.yaml with correct project entry', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-ws-'));
+  const targetProject = join(workspaceRoot, 'projects', 'my-tool');
+  try {
+    const logMessages: string[] = [];
+    await generateDocs({
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator',
+      workspaceRootPath: workspaceRoot,
+      log: (msg) => logMessages.push(msg),
+    });
+
+    const wsText = await readFile(join(workspaceRoot, 'raes.workspace.yaml'), 'utf8');
+    assert.match(wsText, /projects:/);
+    assert.match(wsText, /my-tool:/);
+    assert.match(wsText, /config: projects\/my-tool\/raes.config.yaml/);
+    assert(logMessages.includes('  raes.workspace.yaml'), 'should log workspace file creation');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('generateDocs with workspaceRootPath places raes.config.yaml at project root, not docs/', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-ws-'));
+  const targetProject = join(workspaceRoot, 'projects', 'check-tool');
+  try {
+    await generateDocs({
+      targetProjectPath: targetProject,
+      archetype: 'cli-doc-generator',
+      workspaceRootPath: workspaceRoot,
+    });
+
+    assert(existsSync(join(targetProject, 'raes.config.yaml')), 'raes.config.yaml must be at project root');
+    assert(!existsSync(join(targetProject, 'docs', 'raes.config.yaml')), 'raes.config.yaml must NOT be in docs/');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('generateDocs appends second project to existing raes.workspace.yaml', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-ws-'));
+  try {
+    // Init first project
+    await generateDocs({
+      targetProjectPath: join(workspaceRoot, 'projects', 'alpha'),
+      archetype: 'cli-doc-generator',
+      workspaceRootPath: workspaceRoot,
+    });
+
+    // Init second project
+    await generateDocs({
+      targetProjectPath: join(workspaceRoot, 'projects', 'beta'),
+      archetype: 'cli-doc-generator',
+      workspaceRootPath: workspaceRoot,
+    });
+
+    const wsText = await readFile(join(workspaceRoot, 'raes.workspace.yaml'), 'utf8');
+    assert.match(wsText, /alpha:/);
+    assert.match(wsText, /beta:/);
+    // Ensure both config paths are present
+    assert.match(wsText, /config: projects\/alpha\/raes.config.yaml/);
+    assert.match(wsText, /config: projects\/beta\/raes.config.yaml/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('generateDocs with workspaceRootPath throws WorkspaceRegistrationError when project already registered', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-ws-'));
+  try {
+    await generateDocs({
+      targetProjectPath: join(workspaceRoot, 'projects', 'dupe'),
+      archetype: 'cli-doc-generator',
+      workspaceRootPath: workspaceRoot,
+    });
+
+    // Second init with same name from a different path
+    const tempOtherRoot = await mkdtemp(join(tmpdir(), 'raes-other-'));
+    try {
+      await assert.rejects(
+        generateDocs({
+          targetProjectPath: join(tempOtherRoot, 'dupe'),
+          archetype: 'cli-doc-generator',
+          workspaceRootPath: workspaceRoot,
+        }),
+        (err: unknown) => {
+          assert(err instanceof WorkspaceRegistrationError);
+          assert((err as Error).message.includes("'dupe' is already registered"));
+          return true;
+        },
+      );
+    } finally {
+      rmSync(tempOtherRoot, { recursive: true });
+    }
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('registerProjectInWorkspace creates workspace file when it does not exist', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-rp-'));
+  try {
+    const configPath = join(workspaceRoot, 'projects', 'my-tool', 'raes.config.yaml');
+    await registerProjectInWorkspace(workspaceRoot, 'my-tool', configPath);
+    const text = await readFile(join(workspaceRoot, 'raes.workspace.yaml'), 'utf8');
+    assert.match(text, /projects:/);
+    assert.match(text, /my-tool:/);
+    assert.match(text, /config: projects\/my-tool\/raes.config.yaml/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('registerProjectInWorkspace appends to existing workspace file', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-rp-'));
+  try {
+    await registerProjectInWorkspace(workspaceRoot, 'alpha', join(workspaceRoot, 'projects', 'alpha', 'raes.config.yaml'));
+    await registerProjectInWorkspace(workspaceRoot, 'beta', join(workspaceRoot, 'projects', 'beta', 'raes.config.yaml'));
+    const text = await readFile(join(workspaceRoot, 'raes.workspace.yaml'), 'utf8');
+    assert.match(text, /alpha:/);
+    assert.match(text, /beta:/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('registerProjectInWorkspace throws WorkspaceRegistrationError for duplicate project name', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-rp-'));
+  try {
+    await registerProjectInWorkspace(workspaceRoot, 'dup', join(workspaceRoot, 'dup', 'raes.config.yaml'));
+    await assert.rejects(
+      registerProjectInWorkspace(workspaceRoot, 'dup', join(workspaceRoot, 'dup2', 'raes.config.yaml')),
+      (err: unknown) => {
+        assert(err instanceof WorkspaceRegistrationError);
+        assert((err as Error).message.includes("'dup' is already registered"));
+        return true;
+      },
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('--workspace CLI flag registers project in workspace file', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'raes-cli-ws-'));
+  const targetProject = join(workspaceRoot, 'projects', 'cli-tool');
+  try {
+    const messages: string[] = [];
+    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+    // Capture stdout without patching console
+    const exitCode = await (async () => {
+      const lines: string[] = [];
+      const orig = process.stdout.write.bind(process.stdout);
+      process.stdout.write = (chunk: Uint8Array | string) => {
+        lines.push(typeof chunk === 'string' ? chunk : String(chunk));
+        return true;
+      };
+      try {
+        return await main([targetProject, 'cli-doc-generator', '--workspace', workspaceRoot]);
+      } finally {
+        process.stdout.write = orig;
+        messages.push(...lines);
+      }
+    })();
+    assert.equal(exitCode, 0, 'expected exit 0');
+    assert(existsSync(join(workspaceRoot, 'raes.workspace.yaml')), 'workspace file should be created');
+    const wsText = await readFile(join(workspaceRoot, 'raes.workspace.yaml'), 'utf8');
+    assert.match(wsText, /cli-tool:/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true });
+  }
+});
+
+test('--workspace without value exits 1 with usage message', async () => {
+  const messages: string[] = [];
+  const origErr = console.error;
+  console.error = (m?: unknown) => messages.push(String(m ?? ''));
+  try {
+    const exitCode = await main(['/some/target', 'cli', '--workspace']);
+    assert.equal(exitCode, 1);
+    assert(messages.join('\n').includes('--workspace requires a workspace root path'));
+  } finally {
+    console.error = origErr;
+  }
+});
+

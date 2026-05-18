@@ -1,10 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, join, relative, resolve } from 'node:path';
 import type { Provider } from './provider.ts';
 
 export const SUPPORTED_ARCHETYPES = ['cli-doc-generator', 'frontend-backend-ai-app', 'cli'] as const;
 export type SupportedArchetype = (typeof SUPPORTED_ARCHETYPES)[number];
 
+// The docs written under <target>/docs/
 const REQUIRED_DOC_NAMES = [
   'prd.md',
   'system.md',
@@ -13,8 +15,10 @@ const REQUIRED_DOC_NAMES = [
   'prd-ux-review.md',
   'execution-guidance.md',
   'validation.md',
-  'raes.config.yaml'
 ] as const;
+
+// raes.config.yaml lives at the project root, NOT under docs/
+const CONFIG_FILE_NAME = 'raes.config.yaml';
 
 const REQUIRED_DOC_HEADINGS: Record<string, string[]> = {
   'prd.md': [],
@@ -121,6 +125,7 @@ export type GenerateDocsInput = {
   archetype: string;
   provider?: Provider;
   log?: (message: string) => void;
+  workspaceRootPath?: string;
 };
 
 type PrdSections = {
@@ -134,7 +139,8 @@ export async function generateDocs({
   targetProjectPath,
   archetype,
   provider,
-  log
+  log,
+  workspaceRootPath,
 }: GenerateDocsInput): Promise<string[]> {
   validateRequiredInput('target project path', targetProjectPath);
   validateRequiredInput('archetype', archetype);
@@ -155,11 +161,13 @@ export async function generateDocs({
   const prdIsAlreadyAtTarget =
     prdPath !== undefined && resolve(prdPath) === resolve(targetPrdPath);
 
-  const outputPaths = REQUIRED_DOC_NAMES.map((name) => join(docsDirectory, name));
+  const configOutputPath = join(targetProjectPath, CONFIG_FILE_NAME);
+  const docOutputPaths = REQUIRED_DOC_NAMES.map((name) => join(docsDirectory, name));
+  const allOutputPaths = [...docOutputPaths, configOutputPath];
 
   const pathsToCheckForConflict = prdIsAlreadyAtTarget
-    ? outputPaths.filter((p) => basename(p) !== 'prd.md')
-    : outputPaths;
+    ? allOutputPaths.filter((p) => basename(p) !== 'prd.md')
+    : allOutputPaths;
 
   await failIfOutputsExist(pathsToCheckForConflict);
 
@@ -260,13 +268,13 @@ export async function generateDocs({
     ['prd-ux-review.md', prdUxReviewContent],
     ['execution-guidance.md', executionGuidanceMdContent],
     ['validation.md', validationMdContent],
-    ['raes.config.yaml', renderRaesConfig(projectName)]
+    [CONFIG_FILE_NAME, renderRaesConfig(projectName)]
   ]);
 
   log?.(`Writing docs to ${docsDirectory}...`);
   await mkdir(docsDirectory, { recursive: true });
 
-  for (const outputPath of outputPaths) {
+  for (const outputPath of docOutputPaths) {
     const fileName = basename(outputPath);
     if (prdIsAlreadyAtTarget && fileName === 'prd.md') {
       continue;
@@ -280,7 +288,20 @@ export async function generateDocs({
     log?.(`  ${fileName}`);
   }
 
-  return outputPaths;
+  // Write raes.config.yaml to project root (not docs/)
+  const configContent = generatedContent.get(CONFIG_FILE_NAME);
+  if (!configContent) {
+    throw new GenerationError(`missing generated content for ${CONFIG_FILE_NAME}`);
+  }
+  validateGeneratedDocShape(CONFIG_FILE_NAME, REQUIRED_DOC_HEADINGS[CONFIG_FILE_NAME] ?? [], configContent);
+  await writeFile(configOutputPath, configContent, 'utf8');
+  log?.(`  ${CONFIG_FILE_NAME}`);
+
+  if (workspaceRootPath !== undefined) {
+    await registerProjectInWorkspace(workspaceRootPath, projectName, configOutputPath, log);
+  }
+
+  return allOutputPaths;
 }
 
 async function failIfOutputsExist(outputPaths: string[]): Promise<void> {
@@ -294,6 +315,78 @@ async function failIfOutputsExist(outputPaths: string[]): Promise<void> {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace support
+// ---------------------------------------------------------------------------
+
+export class WorkspaceRegistrationError extends Error {}
+
+function renderWorkspaceFile(projects: Array<{ name: string; configRelPath: string }>): string {
+  const projectLines = projects.map((p) => `  ${p.name}:\n    config: ${p.configRelPath}`).join('\n');
+  return `projects:\n${projectLines}\n`;
+}
+
+export async function registerProjectInWorkspace(
+  workspaceRootPath: string,
+  projectName: string,
+  absoluteConfigPath: string,
+  log?: (message: string) => void,
+): Promise<void> {
+  const workspaceFilePath = join(workspaceRootPath, 'raes.workspace.yaml');
+  const configRelPath = relative(workspaceRootPath, absoluteConfigPath);
+
+  if (!existsSync(workspaceFilePath)) {
+    const content = renderWorkspaceFile([{ name: projectName, configRelPath }]);
+    await writeFile(workspaceFilePath, content, 'utf8');
+    log?.(`  raes.workspace.yaml`);
+    return;
+  }
+
+  const existing = await readFile(workspaceFilePath, 'utf8');
+
+  // Check whether this project name is already registered.
+  // We match the canonical indented form written by this tool: "  <name>:"
+  const namePattern = new RegExp(`^  ${escapeRegex(projectName)}:`, 'm');
+  if (namePattern.test(existing)) {
+    throw new WorkspaceRegistrationError(
+      `project '${projectName}' is already registered in raes.workspace.yaml at ${workspaceFilePath}\n` +
+      `  fix: choose a different project name or update the existing entry manually`,
+    );
+  }
+
+  // Append the new project entry to the projects: block.
+  // The workspace file written by this tool always has the form:
+  //   projects:\n  name:\n    config: path\n[optional other sections]
+  // Insert the new entry after the last "    config: ..." line.
+  const newEntry = `  ${projectName}:\n    config: ${configRelPath}\n`;
+  const lastConfigIdx = existing.lastIndexOf('\n    config:');
+  let updated: string;
+  if (lastConfigIdx === -1) {
+    // No projects yet; insert right after "projects:\n"
+    const projectsLineEnd = existing.indexOf('\n', existing.indexOf('projects:'));
+    if (projectsLineEnd === -1) {
+      updated = existing.trimEnd() + '\n' + newEntry;
+    } else {
+      updated = existing.slice(0, projectsLineEnd + 1) + newEntry + existing.slice(projectsLineEnd + 1);
+    }
+  } else {
+    // Insert after the end of the last config line
+    const lineEnd = existing.indexOf('\n', lastConfigIdx + 1);
+    if (lineEnd === -1) {
+      updated = existing + '\n' + newEntry;
+    } else {
+      updated = existing.slice(0, lineEnd + 1) + newEntry + existing.slice(lineEnd + 1);
+    }
+  }
+
+  await writeFile(workspaceFilePath, updated, 'utf8');
+  log?.(`  raes.workspace.yaml (updated)`);
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function validateRequiredInput(label: string, value: string): void {

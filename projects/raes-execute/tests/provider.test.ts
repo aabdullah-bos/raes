@@ -423,6 +423,7 @@ test('GitHubCopilotProvider: read-only sandbox denies write and shell tools', as
   const mock = makeSpawnMock({ stdoutData: `${JSON.stringify({ type: 'turn.completed', output_text: 'done' })}\n` });
   const provider = new GitHubCopilotProvider(makeConfig('github_copilot', false), mock.spawnFn);
   await provider.submit('test prompt');
+  assert.ok(mock.capturedArgs.includes('--allow-all-tools'));
   assert.ok(mock.capturedArgs.includes('--deny-tool=write'));
   assert.ok(mock.capturedArgs.includes('--deny-tool=shell'));
 });

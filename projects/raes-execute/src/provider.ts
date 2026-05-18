@@ -1113,7 +1113,7 @@ function extractCopilotFinalText(event: Record<string, unknown>): string | undef
   );
 }
 
-function extractCopilotResultFromLine(
+function extractCopilotPromptResultFromLine(
   line: string,
   hooks: ProviderHooks | undefined,
   state: { finalOutput: string },
@@ -1476,9 +1476,7 @@ export class GitHubCopilotProvider extends OneShotProvider {
   async submit(prompt: string, hooks?: ProviderHooks): Promise<ProviderResult> {
     const writeAccess = this.config.provider.sandbox?.write_access !== false;
     const args = ['-p', prompt, '--output-format=json', '--allow-all-tools'];
-    if (writeAccess) {
-      args.push('--allow-tool=write');
-    } else {
+    if (!writeAccess) {
       args.push('--deny-tool=write', '--deny-tool=shell');
     }
     if (this.config.provider.model) {
@@ -1517,7 +1515,7 @@ export class GitHubCopilotProvider extends OneShotProvider {
 
       child.stdout.on('data', (chunk: Buffer) => {
         const parsed = parseJsonlChunk(chunk.toString(), stdoutBuffer, (line) =>
-          extractCopilotResultFromLine(line, hooks, state),
+          extractCopilotPromptResultFromLine(line, hooks, state),
         );
         stdoutBuffer = parsed.buffer;
         if (parsed.result) {
@@ -1548,7 +1546,7 @@ export class GitHubCopilotProvider extends OneShotProvider {
         }
 
         const trailing = parseTrailingJsonlBuffer(stdoutBuffer, (line) =>
-          extractCopilotResultFromLine(line, hooks, state),
+          extractCopilotPromptResultFromLine(line, hooks, state),
         );
         if (trailing) {
           state.finalOutput = trailing.output;

@@ -580,6 +580,134 @@ test('GitHubCopilotProvider: falls back to accumulated assistant messages when r
   assert.equal(result.output, 'Recovered from assistant message fallback.');
 });
 
+test('GitHubCopilotProvider: extracts nested assistant/result text and nested tool command labels', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant.message_delta',
+      delta: {
+        content: [{ type: 'output_text', text: 'Nested assistant delta.' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'tool.execution_start',
+      item: { payload: { tool_call: { name: 'npm run lint' } } },
+    }),
+    JSON.stringify({
+      type: 'tool.execution_complete',
+      item: { payload: { tool_call: { name: 'npm run lint' } } },
+      exit_code: 0,
+      status: 'completed',
+    }),
+    JSON.stringify({
+      type: 'result',
+      result: {
+        response: {
+          content: [{ type: 'output_text', text: 'Nested authoritative output.' }],
+        },
+      },
+    }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+
+  assert.equal(result.output, 'Nested authoritative output.');
+  assert.equal(
+    events.find((event) => event.eventType === 'assistant.message_delta')?.text,
+    'Nested assistant delta.',
+  );
+  assert.deepEqual(
+    events.find((event) => event.eventType === 'tool.execution_start'),
+    {
+      kind: 'tool',
+      text: 'npm run lint',
+      phase: 'command',
+      eventType: 'tool.execution_start',
+      command: 'npm run lint',
+      item: {
+        kind: 'command_execution',
+        command: 'npm run lint',
+        status: 'inProgress',
+      },
+    },
+  );
+  assert.deepEqual(
+    events.find((event) => event.eventType === 'tool.execution_complete'),
+    {
+      kind: 'status',
+      text: 'npm run lint',
+      phase: 'command',
+      eventType: 'tool.execution_complete',
+      command: 'npm run lint',
+      item: {
+        kind: 'command_execution',
+        command: 'npm run lint',
+        status: 'completed',
+        exitCode: 0,
+      },
+    },
+  );
+});
+
+test('GitHubCopilotProvider: extracts result output from array-based content blocks', async () => {
+  const stdoutData = [
+    JSON.stringify({
+      type: 'result',
+      result: {
+        payload: {
+          blocks: [{ type: 'text', value: 'Output from array content block.' }],
+        },
+      },
+    }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Output from array content block.');
+});
+
+test('GitHubCopilotProvider: uses deep nested result text when shallow result fields are empty', async () => {
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant.message_delta',
+      delta: { text: 'Assistant fallback should not win when result has deep text.' },
+    }),
+    JSON.stringify({
+      type: 'result',
+      result: {
+        output_text: '   ',
+        envelope: {
+          content: [{ type: 'text', text: 'Deep nested result output.' }],
+        },
+      },
+    }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Deep nested result output.');
+});
+
+test('GitHubCopilotProvider: preserves flat payload extraction behavior', async () => {
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant.message_delta',
+      delta: { text: 'Flat assistant delta.' },
+    }),
+    JSON.stringify({
+      type: 'result',
+      result: { output_text: 'Flat result output.' },
+    }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Flat result output.');
+});
+
 test('GitHubCopilotProvider: returns fallback assistant output when stream ends without result event', async () => {
   const stdoutData = [
     JSON.stringify({ type: 'assistant.turn_start' }),
@@ -595,8 +723,8 @@ test('GitHubCopilotProvider: emits diagnostic warning when result and fallback e
   const events: ProviderProgressEvent[] = [];
   const stdoutData = [
     JSON.stringify({ type: 'assistant.turn_start' }),
-    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ' } }),
-    JSON.stringify({ type: 'result', result: {} }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ', meta: { id: 'msg-1', status: 'streaming' } } }),
+    JSON.stringify({ type: 'result', result: { meta: { id: 'r-1', status: 'completed' } } }),
   ].join('\n');
   const mock = makeSpawnMock({ stdoutData });
   const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);

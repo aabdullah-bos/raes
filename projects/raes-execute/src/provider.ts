@@ -813,12 +813,39 @@ function extractDeltaText(event: Record<string, unknown>): string | undefined {
 
 function extractCommandText(event: Record<string, unknown>): string | undefined {
   const item = readRecord(event['item']);
-  return (
+  const direct = (
     readNonEmptyString(item?.['command']) ??
     readNonEmptyString(event['command']) ??
     readNonEmptyString(event['tool_name']) ??
     readNonEmptyString(event['tool'])
   );
+  if (direct) {
+    return direct;
+  }
+
+  const nestedRoots: unknown[] = [
+    item,
+    readRecord(event['tool']),
+    readRecord(event['tool_call']),
+    readRecord(event['execution']),
+    readRecord(event['details']),
+    readRecord(event['payload']),
+    readRecord(event['data']),
+  ];
+
+  for (const root of nestedRoots) {
+    const nested = extractDeepPreferredString(
+      root,
+      COPILOT_COMMAND_PREFERRED_KEYS,
+      COPILOT_COMMAND_IGNORED_KEYS,
+    );
+    const normalized = readNonEmptyString(nested);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
 }
 
 function extractAgentMessageText(event: Record<string, unknown>): string | undefined {
@@ -1108,11 +1135,169 @@ function hasNonWhitespaceText(text: string | undefined): text is string {
   return text !== undefined && /\S/.test(text);
 }
 
+const COPILOT_TEXT_PREFERRED_KEYS = [
+  'output_text',
+  'text',
+  'message',
+  'content',
+  'result',
+  'delta',
+  'parts',
+  'part',
+  'items',
+  'item',
+  'value',
+  'body',
+  'output',
+  'final',
+] as const;
+
+const COPILOT_TEXT_IGNORED_KEYS = new Set<string>([
+  'id',
+  'ids',
+  'uuid',
+  'trace_id',
+  'request_id',
+  'status',
+  'type',
+  'role',
+  'event',
+  'event_type',
+  'timestamp',
+  'created_at',
+  'updated_at',
+  'model',
+  'provider',
+  'path',
+  'cwd',
+]);
+
+const COPILOT_COMMAND_PREFERRED_KEYS = ['command', 'tool_name', 'tool', 'name', 'label', 'title'] as const;
+
+const COPILOT_COMMAND_IGNORED_KEYS = new Set<string>([
+  'id',
+  'ids',
+  'uuid',
+  'trace_id',
+  'request_id',
+  'status',
+  'type',
+  'role',
+  'event',
+  'event_type',
+  'timestamp',
+  'created_at',
+  'updated_at',
+  'text',
+  'message',
+  'output_text',
+  'content',
+  'delta',
+  'result',
+  'path',
+  'cwd',
+]);
+
+function extractDeepPreferredString(
+  value: unknown,
+  preferredKeys: ReadonlyArray<string>,
+  ignoredKeys: ReadonlySet<string>,
+): string | undefined {
+  const preferredKeySet = new Set(preferredKeys);
+  return extractDeepPreferredStringInner(
+    value,
+    preferredKeys,
+    preferredKeySet,
+    ignoredKeys,
+    new WeakSet<object>(),
+    false,
+  );
+}
+
+function extractDeepPreferredStringInner(
+  value: unknown,
+  preferredKeys: ReadonlyArray<string>,
+  preferredKeySet: ReadonlySet<string>,
+  ignoredKeys: ReadonlySet<string>,
+  seen: WeakSet<object>,
+  allowDirectString: boolean,
+): string | undefined {
+  if (typeof value === 'string') {
+    return allowDirectString && hasNonWhitespaceText(value) ? value : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const match = extractDeepPreferredStringInner(
+        entry,
+        preferredKeys,
+        preferredKeySet,
+        ignoredKeys,
+        seen,
+        allowDirectString,
+      );
+      if (match) return match;
+    }
+    return undefined;
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  if (seen.has(value)) {
+    return undefined;
+  }
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  for (const key of preferredKeys) {
+    if (ignoredKeys.has(key) || !Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+    const match = extractDeepPreferredStringInner(
+      record[key],
+      preferredKeys,
+      preferredKeySet,
+      ignoredKeys,
+      seen,
+      true,
+    );
+    if (match) return match;
+  }
+
+  for (const [key, nested] of Object.entries(record)) {
+    if (ignoredKeys.has(key) || preferredKeySet.has(key)) {
+      continue;
+    }
+    const match = extractDeepPreferredStringInner(
+      nested,
+      preferredKeys,
+      preferredKeySet,
+      ignoredKeys,
+      seen,
+      false,
+    );
+    if (match) return match;
+  }
+
+  return undefined;
+}
+
 function extractCopilotResultText(event: Record<string, unknown>): string | undefined {
   const result = readRecord(event['result']);
   const content = readRecord(result?.['content']);
   const message = readRecord(result?.['message']);
   const topLevelMessage = readRecord(event['message']);
+  const deepResultText = extractDeepPreferredString(
+    result,
+    COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_IGNORED_KEYS,
+  );
+  const deepEventText = extractDeepPreferredString(
+    event,
+    COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_IGNORED_KEYS,
+  );
   const text = (
     readString(event['output_text']) ??
     readString(result?.['output_text']) ??
@@ -1124,18 +1309,26 @@ function extractCopilotResultText(event: Record<string, unknown>): string | unde
     readString(event['result']) ??
     readString(event['text']) ??
     readString(event['message']) ??
-    readString(topLevelMessage?.['text'])
+    readString(topLevelMessage?.['text']) ??
+    deepResultText ??
+    deepEventText
   );
   return hasNonWhitespaceText(text) ? text : undefined;
 }
 
 function extractCopilotAssistantMessageText(event: Record<string, unknown>): string | undefined {
+  const deepText = extractDeepPreferredString(
+    event,
+    COPILOT_TEXT_PREFERRED_KEYS,
+    COPILOT_TEXT_IGNORED_KEYS,
+  );
   const text = (
     readString(readRecord(event['delta'])?.['text']) ??
     readString(event['text']) ??
     readString(event['message']) ??
     readString(readRecord(event['message'])?.['text']) ??
-    readString(readRecord(event['content'])?.['text'])
+    readString(readRecord(event['content'])?.['text']) ??
+    deepText
   );
   return hasNonWhitespaceText(text) ? text : undefined;
 }

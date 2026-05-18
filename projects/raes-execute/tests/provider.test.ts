@@ -1072,7 +1072,8 @@ test('CodexAppServerSession: JSON-RPC error response rejects the matching reques
 
   const result = await turnPromise;
   assert.equal(result.output, '');
-  assert.match(result.error ?? '', /codex app-server protocol failure/i);
+  assert.match(result.error ?? '', /codex app-server agent execution failure/i);
+  assert.match(result.error ?? '', /turn\/start failed/i);
   assert.match(result.error ?? '', /turn failed/i);
 
   const closePromise = session.close();
@@ -1143,6 +1144,31 @@ test('CodexAppServerSession: authentication failure returns actionable fix guida
   const result = await turnPromise;
   assert.equal(result.output, '');
   assert.match(result.error ?? '', /authentication failure/i);
+  assert.match(result.fix ?? '', /codex login/i);
+});
+
+test('CodexAppServerSession: thread/start session-state failure returns actionable ownership fix guidance', async () => {
+  const mock = makeAppServerSpawnMock();
+  const session = new CodexAppServerSession(makeConfig('openai', true, 'app_server'), '/repo', mock.spawnFn);
+
+  const turnPromise = session.submitTurn('Implement the slice');
+  await Promise.resolve();
+  mock.reply({
+    userAgent: 'codex-test',
+    codexHome: '/tmp/codex-home',
+    platformFamily: 'unix',
+    platformOs: 'darwin',
+  });
+  await Promise.resolve();
+  mock.replyError('failed to persist session under /Users/test/.codex/sessions: EACCES: permission denied, mkdir');
+
+  const result = await turnPromise;
+  assert.equal(result.output, '');
+  assert.match(result.error ?? '', /session state failure/i);
+  assert.match(result.error ?? '', /thread\/start/i);
+  assert.doesNotMatch(result.error ?? '', /protocol failure/i);
+  assert.match(result.fix ?? '', /~\/\.codex\/sessions/);
+  assert.match(result.fix ?? '', /ownership\/permissions/i);
   assert.match(result.fix ?? '', /codex login/i);
 });
 

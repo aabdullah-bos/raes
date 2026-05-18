@@ -509,7 +509,7 @@
   - this is a review slice to test app_server
   - do not run any tests or provide any changes to the code
 
-- [ ] Slice 13o-1: Handle Codex app-server session-directory startup failures.
+- [x] Slice 13o-1: Handle Codex app-server session-directory startup failures.
   - Detect the case where the OpenAI app-server transport cannot create or
     access Codex session state under `~/.codex/sessions` during startup or
     `thread/start`.
@@ -576,6 +576,16 @@
 ---
 
 ## Handoff Notes
+
+### Slice 13o-1 — 2026-05-18
+
+**What changed in this slice:** `src/provider.ts` now detects Codex app-server session-state failures when startup or `thread/start` cannot create/access state under `~/.codex` or `~/.codex/sessions` and returns a structured provider error with operator-facing repair guidance instead of the generic protocol/startup bucket. JSON-RPC request tracking now preserves the original request method in error text, so failures now identify `thread/start` or `turn/start` explicitly.
+
+**Tests added/updated:** Added provider coverage for `thread/start` session persistence permission failure and a CLI-path regression test that asserts `--execute-next-slice` exits 2, prints the structured session-state guidance, and leaves `docs/pipeline.md` unchanged on provider failure. Updated the existing JSON-RPC request-failure test to expect the more specific `turn/start` labeling.
+
+**Validation:** `npm test` and `npm run typecheck` both passed after the change.
+
+**Operational note for next operator:** The new session-state classifier is string-pattern based around `.codex`/`.codex/sessions` plus access/persistence failure terms. If future Codex CLI releases change that wording, extend the matcher rather than broadening it to unrelated transport failures.
 
 ### Slice Omega-1 — 2026-05-06
 

@@ -61,6 +61,7 @@ interface SpawnedProcess {
 }
 
 interface PendingRequest {
+  method: string;
   resolve: (value: Record<string, unknown>) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
@@ -72,6 +73,8 @@ interface CodexAppServerSessionOptions {
 }
 
 const AUTH_ERROR_RE = /not logged in|unauthorized|unauthenticated|authentication|login required|auth failed|authentication failed/i;
+const SESSION_STATE_PATH_RE = /(?:^|[\/\\~])\.codex(?:[\/\\]sessions?)?/i;
+const SESSION_STATE_ACCESS_RE = /session|sessions|persist|permission denied|eacces|eperm|operation not permitted|ownership|mkdir|create|open|write|access/i;
 
 function extractClaudeResult(stdout: string): ProviderResult {
   let parsed: unknown;
@@ -170,6 +173,13 @@ function formatAppServerError(error: unknown, profile: AppServerErrorProfile): P
       fix: `Run \`${profile.loginCommand}\` to authenticate before using the ${profile.providerName} provider.`,
     };
   }
+  if (isAppServerSessionStateFailure(message)) {
+    return {
+      output: '',
+      error: `${profile.transportLabel} session state failure: ${message}`,
+      fix: 'Repair ownership/permissions for `~/.codex/sessions` (or `~/.codex`) so the app-server can create and access session state, then retry. If authentication state was lost while repairing it, run `codex login` before retrying.',
+    };
+  }
   if (message.includes(`failed to parse ${profile.transportLabel} output as JSONL`)) {
     return {
       output: '',
@@ -210,6 +220,13 @@ function formatAppServerError(error: unknown, profile: AppServerErrorProfile): P
     output: '',
     error: `${profile.transportLabel} transport startup failure: ${message}`,
   };
+}
+
+function isAppServerSessionStateFailure(message: string): boolean {
+  if (!SESSION_STATE_PATH_RE.test(message)) {
+    return false;
+  }
+  return SESSION_STATE_ACCESS_RE.test(message);
 }
 
 function makeAppServerPayloadError(line: string, transportLabel: string): ProviderResult {
@@ -490,6 +507,7 @@ export class CodexAppServerSession implements ProviderSession {
         reject(new Error(`request timed out: ${method} after ${this.requestTimeoutMs}ms`));
       }, this.requestTimeoutMs);
       this.pendingRequests.set(id, {
+        method,
         resolve,
         reject,
         timeout,
@@ -525,7 +543,7 @@ export class CodexAppServerSession implements ProviderSession {
 
       const error = readJsonRpcError(message['error']);
       if (error) {
-        pending.reject(new Error(`codex app-server ${method ?? 'request'} failed: ${error.message}`));
+        pending.reject(new Error(`codex app-server ${pending.method} failed: ${error.message}`));
         return undefined;
       }
 

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { rmSync, readFileSync } from 'node:fs';
 import { main } from '../src/cli.ts';
 import type { Provider, ProviderHooks, ProviderProgressEvent } from '../src/provider.ts';
+import { CodexAppServerProvider } from '../src/provider.ts';
 import { getPromptPath } from '../src/prompt.ts';
 
 const ALL_ARTIFACT_PATHS = [
@@ -33,6 +34,26 @@ sources:
 
 provider:
   name: anthropic
+`;
+
+const VALID_OPENAI_APP_SERVER_CONFIG_YAML = `
+project:
+  name: test-project
+
+sources:
+  build_intent: docs/prd.md
+  system_constraints: docs/system.md
+  next_slice:
+    path: docs/pipeline.md
+    selection_rule: first_unchecked_slice
+  durable_decisions: docs/decisions.md
+  execution_guidance: docs/execution-guidance.md
+  validation: docs/validation.md
+
+provider:
+  name: openai
+  openai:
+    transport: app_server
 `;
 
 async function makeTempProject(withConfig: boolean): Promise<string> {
@@ -95,6 +116,59 @@ function testProviderSpy(output = 'agent output') {
   return {
     provider,
     getCalls: () => calls,
+  };
+}
+
+function makeAppServerSpawnMock() {
+  let stdoutListener: ((c: Buffer) => void) | undefined;
+  let stderrListener: ((c: Buffer) => void) | undefined;
+  let closeListener: ((code: number | null) => void) | undefined;
+  const stdinWritten: string[] = [];
+
+  return {
+    spawnFn: () => ({
+      stdin: {
+        write: (data: string) => {
+          stdinWritten.push(data);
+          return true;
+        },
+        end: () => {
+          closeListener?.(0);
+        },
+      },
+      stdout: {
+        on: (_event: 'data', cb: (c: Buffer) => void) => {
+          stdoutListener = cb;
+          return {} as unknown;
+        },
+      },
+      stderr: {
+        on: (_event: 'data', cb: (c: Buffer) => void) => {
+          stderrListener = cb;
+          return {} as unknown;
+        },
+      },
+      on: (_event: 'close', cb: (code: number | null) => void) => {
+        closeListener = cb;
+        return {} as unknown;
+      },
+    }),
+    reply(result: Record<string, unknown>) {
+      const raw = stdinWritten[stdinWritten.length - 1];
+      const parsed = JSON.parse(raw.trim()) as { id: number };
+      stdoutListener?.(Buffer.from(`${JSON.stringify({ id: parsed.id, result })}\n`));
+    },
+    replyError(message: string) {
+      const raw = stdinWritten[stdinWritten.length - 1];
+      const parsed = JSON.parse(raw.trim()) as { id: number };
+      stdoutListener?.(Buffer.from(`${JSON.stringify({ id: parsed.id, error: { code: -32603, message } })}\n`));
+    },
+    emitStderr(text: string) {
+      stderrListener?.(Buffer.from(text));
+    },
+    close(code: number | null) {
+      closeListener?.(code);
+    },
   };
 }
 
@@ -981,6 +1055,64 @@ test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline wh
   }
 });
 
+test('--execute-next-slice exits 2 and does not write artifacts on app-server session-state failure', async () => {
+  const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
+  const mock = makeAppServerSpawnMock();
+  try {
+    await writeFile(join(dir, 'raes.config.yaml'), VALID_OPENAI_APP_SERVER_CONFIG_YAML);
+    const pipelineBefore = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    const provider = new CodexAppServerProvider(
+      {
+        project: { name: 'test-project' },
+        sources: {
+          build_intent: 'docs/prd.md',
+          system_constraints: 'docs/system.md',
+          next_slice: { path: 'docs/pipeline.md', selection_rule: 'first_unchecked_slice' },
+          durable_decisions: 'docs/decisions.md',
+          execution_guidance: 'docs/execution-guidance.md',
+          validation: 'docs/validation.md',
+        },
+        provider: {
+          name: 'openai',
+          openai: { transport: 'app_server' },
+        },
+      },
+      dir,
+      mock.spawnFn,
+    );
+    const errs: string[] = [];
+
+    const runPromise = main(['--execute-next-slice'], {
+      out: () => {},
+      err: (line) => errs.push(line),
+      cwd: dir,
+      provider,
+      loadPrompt: () => 'prompt text',
+    });
+
+    await Promise.resolve();
+    mock.reply({
+      userAgent: 'codex-test',
+      codexHome: '/tmp/codex-home',
+      platformFamily: 'unix',
+      platformOs: 'darwin',
+    });
+    await Promise.resolve();
+    mock.replyError('failed to persist session under /Users/test/.codex/sessions: EACCES: permission denied, mkdir');
+
+    const { exitCode } = await runPromise;
+    assert.equal(exitCode, 2);
+    assert.match(errs.join('\n'), /session state failure/i);
+    assert.match(errs.join('\n'), /~\/\.codex\/sessions/);
+
+    const pipelineAfter = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.equal(pipelineAfter, pipelineBefore, 'expected pipeline to remain unchanged on provider failure');
+  } finally {
+    mock.close(0);
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--execute-next-slice Execution Loop: exits 0 without modifying pipeline on empty input', async () => {
   const dir = await makeTempProjectWithPipeline(PIPELINE_WITH_EXECUTION_SLICE);
   try {
@@ -1447,4 +1579,3 @@ test('--project resolves config for --status', async () => {
     rmSync(dir, { recursive: true });
   }
 });
-

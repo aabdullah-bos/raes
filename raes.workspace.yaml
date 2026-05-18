@@ -1,0 +1,9 @@
+projects:
+  raes-execute:
+    config: projects/raes-execute/raes.config.yaml
+  raes-init:
+    config: projects/raes-init/raes.config.yaml
+
+shared_source:
+  -docs/raes-reference.md
+

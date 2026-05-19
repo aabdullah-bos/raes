@@ -1388,7 +1388,8 @@ function summarizeCopilotEvent(event: Record<string, unknown>): ProviderProgress
     }
     case 'assistant.message_delta':
     case 'assistant.message': {
-      const delta = extractCopilotAssistantMessageText(event) ?? 'Agent message updated';
+      const delta = extractCopilotAssistantMessageText(event);
+      if (!delta) return undefined;
       return { kind: 'message', text: delta, phase: 'message', eventType: type, delta };
     }
     case 'tool.execution_start':

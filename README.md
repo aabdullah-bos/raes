@@ -91,6 +91,16 @@ Both slice types ensure that:
 - decisions are captured
 - progress remains aligned
 
+### Execution Loop Diagram
+
+The diagram below shows how the execution loop operates in practice — from initialization through each slice, including where flags intervene and what happens when they do.
+
+The loop has two checkpoint types. The **pre-execution check** runs before each slice begins: if a source conflict, PRD conflict, or missing artifact is detected, the slice does not start and the operator must resolve it first. The **mid-execution flag check** runs after the slice completes: if the implementation violates a constraint in `system.md` or `decisions.md`, the slice is marked blocked and the next slice cannot start until the operator resolves it.
+
+Prompts and tools implementing RAES can use this flow as a guide for how the system is intended to behave.
+
+![RAES flag classification and handling flow](docs/raes_flag_classification_flow.svg)
+
 ---
 
 ## The Key Idea

@@ -228,12 +228,24 @@ RAES supports two slice modes. Slice type determines execution rules. Forcing pl
 
 **Loop:**
 ```
-PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 ```
+
+| Step | What happens |
+|------|-------------|
+| `ANALYZE` | Inspect the slice definition and all relevant artifacts (system.md, decisions.md, execution-guidance.md) |
+| `PLAN` | Determine how to execute the slice within existing constraints; identify files to touch |
+| `GENERATE` | Produce scaffolding, failing tests, and stubs — establish the contract before writing production code |
+| `IMPLEMENT` | Write the minimum production code required to make those tests pass |
+| `TEST` | Run relevant tests and typecheck using the project's existing tooling |
+| `EXPLAIN` | Describe what was done and any non-obvious choices |
+| `FLAG` | Surface constraint violations, source conflicts, missing guidance, or ambiguity |
+| `REVIEW` | Operator decision point — gating before artifacts are finalized |
+| `RECORD` | Write durable decisions to the configured artifacts |
 
 **Rules:**
 - One slice only
-- Write failing tests first
+- Generate failing tests before writing any production code
 - Implement the minimum code required to make those tests pass
 - Run relevant tests and typecheck
 - Append handoff notes to the configured pipeline file
@@ -242,7 +254,7 @@ PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 - If required guidance is missing, conflicting, or ambiguous, flag it explicitly before proceeding
 
 **Completion criteria:**
-- Failing test written first
+- Failing tests generated before production code written
 - Minimum code passes the tests
 - Validation run (tests + typecheck)
 - Pipeline handoff notes appended by agent; slice marked complete by the operator via the parent loop (raes-execute) or by the agent when DONE criteria are met (agent UI)
@@ -410,10 +422,15 @@ Execution Slice or Review Slice. Apply the rules for that type only.
 
 ---
 
-EXECUTION SLICE — loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+EXECUTION SLICE — loop: ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 
 Rules:
 - execute one slice only
+- ANALYZE: inspect the slice definition and all relevant artifacts before
+  forming a plan — read system-constraints, durable-decisions, and
+  execution-guidance before writing a single line of code or test
+- PLAN: determine exactly how to execute the slice; identify which files will
+  be touched and what the acceptance boundary is
 - use the configured next-slice source as the source of truth for what to do next
 - use the configured system-constraints source as the source of truth for
   invariants, drift guards, and contracts that must hold across all slices
@@ -425,10 +442,11 @@ Rules:
   decisions that must persist across slices
 - do not redesign the milestone or restate the overall plan unless required
   for execution
-- write failing tests first
-- implement the minimum code required to make those tests pass
-- run relevant tests and typecheck using the project's existing tooling and
-  the configured validation guidance
+- GENERATE: produce scaffolding, failing tests, and stubs before writing any
+  production code — establish the contract first
+- IMPLEMENT: write the minimum production code required to make those tests pass
+- TEST: run relevant tests and typecheck using the project's existing tooling
+  and the configured validation guidance
 - before appending handoff notes, self-check your implementation against all constraints in the
   configured system-constraints source and durable-decisions source; if your implementation violates any existing constraint, complete the slice, record the violation explicitly in handoff notes, and mark the slice blocked — do not silently resolve the conflict
 - append handoff notes to the configured pipeline file; handoff notes capture
@@ -441,8 +459,8 @@ Rules:
 - append durable implementation decisions to the configured decisions file
   only when needed
 
-Expected output: Current slice | Sources used | Repo inspection | Plan |
-Tests added/updated | Implementation changes | Commands run | Result |
+Expected output: Current slice | Sources used | Analysis findings | Plan |
+Generated artifacts (tests/stubs) | Implementation changes | Commands run | Result |
 Flags | Next recommended slice
 
 ---

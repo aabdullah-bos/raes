@@ -13,7 +13,7 @@
    - If the user or agent opts not to proceed, the slice remains unchecked; no partial state is recorded.
 
 3. **Execution Loop (for Implementation Slices)**
-   - Loop sequence: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+   - Loop sequence: ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD
    - CLI loads the slice definition and confirms its type is "implementation" or equivalent.
    - CLI loads the canonical prompt and submits it to the configured provider; the provider executes the loop steps.
    - CLI enforces that only designated artifacts are modified for this slice.

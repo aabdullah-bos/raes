@@ -77,10 +77,10 @@ Both initialization modes generate the same set of files in `<target>/docs/`:
 | `prd.md` | Verbatim copy of source PRD | Stub (Overview, Goals, Non-Goals, Constraints, Open Questions) |
 | `system.md` | Derived from PRD sections | Fallback defaults |
 | `pipeline.md` | Derived from PRD sections | Fallback defaults |
-| `decisions.md` | Empty decision log table | Empty decision log table |
+| `decisions.md` | Derived from PRD (when provider available); empty decision log table otherwise | Empty decision log table |
 | `prd-ux-review.md` | UX risks derived from PRD | Fallback defaults |
-| `execution-guidance.md` | Stub | Stub |
-| `validation.md` | Stub | Stub |
+| `execution-guidance.md` | Derived from PRD (when provider available); archetype stub otherwise | Archetype stub |
+| `validation.md` | Derived from PRD (when provider available); archetype stub otherwise | Archetype stub |
 | `raes.config.yaml` | Generated; routes loop to all source files | Generated; routes loop to all source files |
 
 All generated files must be human-readable, editable markdown. The tool must not
@@ -106,7 +106,7 @@ PRD adaptation uses section-aware string parsing:
 
 `system.md` and `prd-ux-review.md` generation adapts PRD content to RAES section shapes.
 `pipeline.md` uses PRD-derived content for Known Contracts and Unknowns.
-`execution-guidance.md` and `validation.md` are stubs regardless of initialization mode.
+`decisions.md`, `execution-guidance.md`, and `validation.md` are derived from the PRD via inference when a provider is available; each falls back to an archetype stub when no provider is configured.
 
 Archetype templates (in `archetypes/`) are reference documents for humans and brownfield
 discovery. They are not consumed by the generation logic.

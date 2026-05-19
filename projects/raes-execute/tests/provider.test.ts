@@ -568,6 +568,27 @@ test('GitHubCopilotProvider: normalizes copilot streaming taxonomy events and us
   ]);
 });
 
+test('GitHubCopilotProvider: suppresses placeholder assistant message progress when no text is present', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'assistant.turn_start' }),
+    JSON.stringify({ type: 'assistant.message_delta', delta: { text: '   ' } }),
+    JSON.stringify({ type: 'assistant.message' }),
+    JSON.stringify({ type: 'result', result: { output_text: 'authoritative final output' } }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt', {
+    onProgress: (event) => events.push(event),
+  });
+
+  assert.equal(result.output, 'authoritative final output');
+  assert.deepEqual(
+    events.map((event) => event.eventType),
+    ['assistant.turn_start', 'result'],
+  );
+});
+
 test('GitHubCopilotProvider: falls back to accumulated assistant messages when result has no usable output text', async () => {
   const stdoutData = [
     JSON.stringify({ type: 'assistant.turn_start' }),

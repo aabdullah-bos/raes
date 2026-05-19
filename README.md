@@ -7,6 +7,12 @@ RAES does not allow important decisions to remain implicit.
 
 ***RAES forces decisions instead of letting AI guess.***
 
+## Project Status Note
+
+`raes-init` is usable today for bootstrapping RAES project artifacts. It supports bare greenfield setup and PRD-seeded setup, writes the core RAES docs plus `raes.config.yaml`, enforces create-or-fail output behavior, and can use a provider to derive several docs from a source PRD instead of relying only on static stubs. The main limitation is breadth rather than existence: archetype support is still narrow, and some generated content still depends on template/stub fallbacks rather than deep project-specific synthesis.
+
+`raes-execute` is also usable today as a disciplined CLI for working through one slice at a time. It already implements config validation, artifact inspection, pipeline/status views, dry-run preflight, artifact-boundary checks, provider-backed execution/review loops, and confirmation-gated slice completion. The main gaps are around surface area and depth: some advertised commands such as `--history` and `--flag` are still unimplemented, slice typing is inferred from pipeline labels, and execution currently focuses on running the provider loop and marking pipeline progress rather than fully automating richer artifact updates or project history management.
+
 ---
 
 ## AI Execution Systems

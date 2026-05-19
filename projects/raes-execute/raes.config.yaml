@@ -12,6 +12,6 @@ sources:
   validation: docs/validation.md
 
 provider:
-  name: openai
+  name: github_copilot
   openai:
-    transport: app_server
+    transport: exec

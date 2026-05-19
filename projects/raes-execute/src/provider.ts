@@ -102,6 +102,10 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function readUsableString(value: unknown): string | undefined {
+  return typeof value === 'string' && /\S/.test(value) ? value : undefined;
+}
+
 function readRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
 }
@@ -1309,17 +1313,17 @@ function extractCopilotResultText(event: Record<string, unknown>): string | unde
     COPILOT_TEXT_IGNORED_KEYS,
   );
   const text = (
-    readString(event['output_text']) ??
-    readString(result?.['output_text']) ??
-    readString(result?.['result']) ??
-    readString(result?.['text']) ??
-    readString(result?.['message']) ??
-    readString(message?.['text']) ??
-    readString(content?.['text']) ??
-    readString(event['result']) ??
-    readString(event['text']) ??
-    readString(event['message']) ??
-    readString(topLevelMessage?.['text']) ??
+    readUsableString(event['output_text']) ??
+    readUsableString(result?.['output_text']) ??
+    readUsableString(result?.['result']) ??
+    readUsableString(result?.['text']) ??
+    readUsableString(result?.['message']) ??
+    readUsableString(message?.['text']) ??
+    readUsableString(content?.['text']) ??
+    readUsableString(event['result']) ??
+    readUsableString(event['text']) ??
+    readUsableString(event['message']) ??
+    readUsableString(topLevelMessage?.['text']) ??
     deepResultText ??
     deepEventText
   );
@@ -1334,11 +1338,11 @@ function extractCopilotAssistantMessageText(event: Record<string, unknown>): str
     COPILOT_TEXT_IGNORED_KEYS,
   );
   const text = (
-    readString(readRecord(event['delta'])?.['text']) ??
-    readString(event['text']) ??
-    readString(event['message']) ??
-    readString(readRecord(event['message'])?.['text']) ??
-    readString(readRecord(event['content'])?.['text']) ??
+    readUsableString(readRecord(event['delta'])?.['text']) ??
+    readUsableString(event['text']) ??
+    readUsableString(event['message']) ??
+    readUsableString(readRecord(event['message'])?.['text']) ??
+    readUsableString(readRecord(event['content'])?.['text']) ??
     deepText
   );
   return hasNonWhitespaceText(text) ? text : undefined;

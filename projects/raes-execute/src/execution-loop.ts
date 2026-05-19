@@ -26,7 +26,6 @@ interface ExecutionLoopDeps {
 
 function writeFinalOutput(output: string, out: (line: string) => void): boolean {
   if (output.trim().length === 0) {
-    out('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.');
     return false;
   }
   for (const line of output.split('\n')) {
@@ -109,7 +108,11 @@ export async function runExecutionLoop(
     return { exitCode: 2 };
   }
 
-  writeFinalOutput(result.output, out);
+  if (!writeFinalOutput(result.output, out)) {
+    err('error: provider returned empty final output; refusing to record an ambiguous slice result.');
+    err('fix: Rerun the slice after resolving the provider issue and confirm the agent returns a non-empty final output.');
+    return { exitCode: 2 };
+  }
   out('');
   out(`Agent output shown above. Record this slice as complete? [y/N]`);
 

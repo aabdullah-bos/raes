@@ -712,6 +712,28 @@ test('GitHubCopilotProvider: uses deep nested result text when shallow result fi
   assert.equal(result.output, 'Deep nested result output.');
 });
 
+test('GitHubCopilotProvider: ignores whitespace-only shallow result fields when deep nested result text exists', async () => {
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant.message_delta',
+      delta: { text: 'Assistant fallback should not win when result has deep text.' },
+    }),
+    JSON.stringify({
+      type: 'result',
+      result: {
+        output_text: '   ',
+        envelope: {
+          content: [{ type: 'text', text: 'Deep nested whitespace-safe output.' }],
+        },
+      },
+    }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new GitHubCopilotProvider(makeConfig('github_copilot'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Deep nested whitespace-safe output.');
+});
+
 test('GitHubCopilotProvider: preserves flat payload extraction behavior', async () => {
   const stdoutData = [
     JSON.stringify({

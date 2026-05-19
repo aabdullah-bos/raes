@@ -1761,7 +1761,16 @@ function extractClaudeResultFromLine(
     accumulateClaudeTextDelta(event, state);
   }
 
-  const finalText = extractClaudeFinalText(event);
+  // Only look at flat fields here — deep content-block traversal belongs to the result handler
+  // above, and running it on arbitrary events would risk overwriting finalOutput with unrelated
+  // message payloads (e.g. a tool event that happens to carry a message field).
+  const finalText = (
+    readNonEmptyString(event['result']) ??
+    readNonEmptyString(event['output_text']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(readRecord(event['message'])?.['text']) ??
+    readNonEmptyString(readRecord(event['delta'])?.['text'])
+  );
   if (finalText) {
     state.finalOutput = finalText;
   }

@@ -14,10 +14,15 @@ Execution Slice or Review Slice. Apply the rules for that type only.
 
 ---
 
-EXECUTION SLICE — loop: PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+EXECUTION SLICE — loop: ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 
 Rules:
 - execute one slice only
+- ANALYZE: inspect the slice definition and all relevant artifacts before
+  forming a plan — read system-constraints, durable-decisions, and
+  execution-guidance before writing a single line of code or test
+- PLAN: determine exactly how to execute the slice; identify which files will
+  be touched and what the acceptance boundary is
 - use the configured next-slice source as the source of truth for what to do next
 - use the configured system-constraints source as the source of truth for
   invariants, drift guards, and contracts that must hold across all slices
@@ -29,10 +34,11 @@ Rules:
   decisions that must persist across slices
 - do not redesign the milestone or restate the overall plan unless required
   for execution
-- write failing tests first
-- implement the minimum code required to make those tests pass
-- run relevant tests and typecheck using the project's existing tooling and
-  the configured validation guidance
+- GENERATE: produce scaffolding, failing tests, and stubs before writing any
+  production code — establish the contract first
+- IMPLEMENT: write the minimum production code required to make those tests pass
+- TEST: run relevant tests and typecheck using the project's existing tooling
+  and the configured validation guidance
 - before appending handoff notes, self-check your implementation against all
   constraints in the configured system-constraints source and durable-decisions
   source; if your implementation violates any existing constraint, complete the
@@ -51,8 +57,8 @@ Rules:
 - append durable implementation decisions to the configured decisions file
   only when needed
 
-Expected output: Current slice | Sources used | Repo inspection | Plan |
-Tests added/updated | Implementation changes | Commands run | Result |
+Expected output: Current slice | Sources used | Analysis findings | Plan |
+Generated artifacts (tests/stubs) | Implementation changes | Commands run | Result |
 Flags | Next recommended slice
 
 ---

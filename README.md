@@ -69,10 +69,20 @@ RAES supports two distinct slice types. Slice type determines execution rules.
 Used for code changes, behavior changes, and any work verifiable by a passing test.
 
 ```
-PLAN → SLICE → EXECUTE → TEST → EXPLAIN → FLAG → REVIEW → RECORD
+ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD
 ```
 
-Rules: write failing tests first, implement minimum code, run tests and typecheck, append handoff notes, stop after one slice.
+- `ANALYZE` — inspect the slice definition and all relevant artifacts
+- `PLAN` — determine how to execute the slice within existing constraints
+- `GENERATE` — produce scaffolding, failing tests, and stubs
+- `IMPLEMENT` — write the minimum code to make those tests pass
+- `TEST` — run tests and typecheck
+- `EXPLAIN` — describe what was done
+- `FLAG` — surface constraint violations, missing guidance, or ambiguity
+- `REVIEW` — operator decision point (gating)
+- `RECORD` — write durable decisions to artifacts
+
+Rules: generate failing tests before implementing, implement minimum code, run tests and typecheck, append handoff notes, stop after one slice.
 
 ### Review Slice
 

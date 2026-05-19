@@ -1082,41 +1082,109 @@ function summarizeClaudeEvent(event: Record<string, unknown>): ProviderProgressE
   const type = readString(event['type']);
   if (!type) return undefined;
 
+  // Early tool name extraction for events that surface tool_name directly
   const toolName =
     readNonEmptyString(event['tool_name']) ??
     readNonEmptyString(event['tool']) ??
-    readNonEmptyString(event['name']) ??
     readNonEmptyString(readRecord(event['tool_use'])?.['name']);
   if (toolName) {
-    return { kind: 'tool', text: toolName };
+    return { kind: 'tool', text: toolName, phase: 'command', eventType: type };
   }
 
   switch (type) {
+    case 'system': {
+      const subtype = readNonEmptyString(event['subtype']) ?? '';
+      if (subtype === 'init') {
+        const model = readNonEmptyString(event['model']);
+        return {
+          kind: 'status',
+          text: model ? `Session started (${model})` : 'Session started',
+          phase: 'turn',
+          eventType: type,
+        };
+      }
+      if (subtype === 'api_retry') {
+        const attempt = typeof event['attempt'] === 'number' ? (event['attempt'] as number) : undefined;
+        return {
+          kind: 'warning',
+          text: attempt !== undefined ? `API retry (attempt ${attempt})` : 'API retry',
+          phase: 'unknown',
+          eventType: type,
+        };
+      }
+      return {
+        kind: 'status',
+        text: subtype ? `System: ${subtype}` : 'System event',
+        phase: 'unknown',
+        eventType: type,
+      };
+    }
+    case 'stream_event': {
+      const inner = readRecord(event['event']);
+      return inner ? summarizeClaudeEvent(inner) : undefined;
+    }
+    case 'tool':
+      return { kind: 'status', text: 'Tool result received', phase: 'command', eventType: type };
     case 'result':
       return undefined;
     case 'message_start':
-      return { kind: 'status', text: 'Agent response started' };
+      return { kind: 'status', text: 'Agent response started', phase: 'turn', eventType: type };
+    case 'content_block_start': {
+      const contentBlock = readRecord(event['content_block']);
+      if (contentBlock?.['type'] === 'tool_use') {
+        const blockTool = readNonEmptyString(contentBlock['name']);
+        if (blockTool) {
+          return { kind: 'tool', text: blockTool, phase: 'command', eventType: type };
+        }
+      }
+      return { kind: 'status', text: 'Agent started content block', phase: 'message', eventType: type };
+    }
+    case 'content_block_delta': {
+      const delta = readRecord(event['delta']);
+      if (delta?.['type'] === 'text_delta') {
+        const text = readString(delta['text']);
+        if (text !== undefined && text.length > 0) {
+          return { kind: 'message', text, phase: 'message', eventType: type, delta: text };
+        }
+      }
+      return { kind: 'status', text: 'Agent generating output', phase: 'message', eventType: type };
+    }
     case 'message_delta':
-    case 'content_block_delta':
-      return { kind: 'status', text: 'Agent is generating output' };
-    case 'content_block_start':
-      return { kind: 'status', text: 'Agent started a new content block' };
     case 'content_block_stop':
     case 'message_stop':
-      return { kind: 'status', text: 'Agent finished a response segment' };
+      return { kind: 'status', text: 'Agent finished response segment', phase: 'message', eventType: type };
     case 'error':
       return {
         kind: 'warning',
         text: readNonEmptyString(event['message']) ?? 'Provider reported an error event',
+        phase: 'unknown',
+        eventType: type,
       };
     default:
-      return { kind: 'status', text: `Observed ${type}` };
+      return { kind: 'status', text: `Observed ${type}`, phase: 'unknown', eventType: type };
   }
 }
 
 function extractClaudeFinalText(event: Record<string, unknown>): string | undefined {
+  const directResult = readNonEmptyString(event['result']);
+  if (directResult) return directResult;
+
+  // For full assistant message events: concatenate text content blocks
+  const message = readRecord(event['message']);
+  if (message) {
+    const content = Array.isArray(message['content']) ? (message['content'] as unknown[]) : [];
+    const textParts: string[] = [];
+    for (const block of content) {
+      const blockRecord = readRecord(block);
+      if (blockRecord?.['type'] === 'text') {
+        const text = readNonEmptyString(blockRecord['text']);
+        if (text) textParts.push(text);
+      }
+    }
+    if (textParts.length > 0) return textParts.join('');
+  }
+
   return (
-    readNonEmptyString(event['result']) ??
     readNonEmptyString(event['output_text']) ??
     readNonEmptyString(event['text']) ??
     readNonEmptyString(readRecord(event['message'])?.['text']) ??
@@ -1566,10 +1634,76 @@ function extractCodexResultFromLine(line: string, hooks?: ProviderHooks): Provid
   return undefined;
 }
 
+/**
+ * Stateful Claude stream accumulator used while parsing stream-json JSONL output.
+ * assistantTextParts accumulates text deltas as a fallback when result payload is empty.
+ */
+interface ClaudePromptParseState {
+  finalOutput: string;
+  assistantTextParts: string[];
+  assistantFallbackText?: string;
+}
+
+function extractClaudeAssistantContent(
+  event: Record<string, unknown>,
+  hooks: ProviderHooks | undefined,
+  state: ClaudePromptParseState,
+): void {
+  const message = readRecord(event['message']);
+  if (!message) return;
+
+  const content = Array.isArray(message['content']) ? (message['content'] as unknown[]) : [];
+  for (const block of content) {
+    const blockRecord = readRecord(block);
+    if (!blockRecord) continue;
+
+    const blockType = readString(blockRecord['type']);
+    if (blockType === 'tool_use') {
+      const toolName = readNonEmptyString(blockRecord['name']);
+      if (toolName) {
+        emitProgress(hooks, {
+          kind: 'tool',
+          text: toolName,
+          phase: 'command',
+          eventType: 'assistant',
+          command: toolName,
+        });
+      }
+    } else if (blockType === 'text') {
+      const text = readNonEmptyString(blockRecord['text']);
+      if (text) {
+        state.assistantTextParts.push(text);
+        state.assistantFallbackText = undefined;
+        emitProgress(hooks, {
+          kind: 'message',
+          text,
+          phase: 'message',
+          eventType: 'assistant',
+          delta: text,
+        });
+      }
+    }
+  }
+}
+
+function accumulateClaudeTextDelta(
+  event: Record<string, unknown>,
+  state: ClaudePromptParseState,
+): void {
+  const delta = readRecord(event['delta']);
+  if (delta?.['type'] === 'text_delta') {
+    const text = readString(delta['text']);
+    if (text !== undefined && text.length > 0) {
+      state.assistantTextParts.push(text);
+      state.assistantFallbackText = undefined;
+    }
+  }
+}
+
 function extractClaudeResultFromLine(
   line: string,
   hooks: ProviderHooks | undefined,
-  state: { finalOutput: string },
+  state: ClaudePromptParseState,
 ): ProviderResult | undefined {
   let parsed: unknown;
   try {
@@ -1589,15 +1723,54 @@ function extractClaudeResultFromLine(
     };
   }
 
-  const progress = summarizeClaudeEvent(event);
-  if (progress) emitProgress(hooks, progress);
+  const eventType = readString(event['type']);
 
-  if (event['type'] === 'result') {
-    state.finalOutput = extractClaudeFinalText(event) ?? state.finalOutput;
+  // Full assistant message: iterate content blocks for tool_use / text
+  if (eventType === 'assistant') {
+    extractClaudeAssistantContent(event, hooks, state);
+    return undefined;
+  }
+
+  // stream_event wraps inner API streaming events — unwrap before routing
+  if (eventType === 'stream_event') {
+    const inner = readRecord(event['event']);
+    if (!inner) return undefined;
+    const innerType = readString(inner['type']);
+    const progress = summarizeClaudeEvent(inner);
+    if (progress) emitProgress(hooks, progress);
+    if (innerType === 'content_block_delta') {
+      accumulateClaudeTextDelta(inner, state);
+    }
+    return undefined;
+  }
+
+  // result is the authoritative final output; fall back to accumulated text
+  if (eventType === 'result') {
+    const resultText = extractClaudeFinalText(event);
+    const fallback = state.assistantFallbackText ?? state.assistantTextParts.join('');
+    state.assistantFallbackText = fallback;
+    state.finalOutput = resultText || fallback;
     return { output: state.finalOutput };
   }
 
-  const finalText = extractClaudeFinalText(event);
+  const progress = summarizeClaudeEvent(event);
+  if (progress) emitProgress(hooks, progress);
+
+  // Accumulate text deltas from raw API streaming events (content_block_delta)
+  if (eventType === 'content_block_delta') {
+    accumulateClaudeTextDelta(event, state);
+  }
+
+  // Only look at flat fields here — deep content-block traversal belongs to the result handler
+  // above, and running it on arbitrary events would risk overwriting finalOutput with unrelated
+  // message payloads (e.g. a tool event that happens to carry a message field).
+  const finalText = (
+    readNonEmptyString(event['result']) ??
+    readNonEmptyString(event['output_text']) ??
+    readNonEmptyString(event['text']) ??
+    readNonEmptyString(readRecord(event['message'])?.['text']) ??
+    readNonEmptyString(readRecord(event['delta'])?.['text'])
+  );
   if (finalText) {
     state.finalOutput = finalText;
   }
@@ -1648,7 +1821,7 @@ export class ClaudeCodeProvider extends OneShotProvider {
 
       let stdoutBuffer = '';
       let stderr = '';
-      const state = { finalOutput: '' };
+      const state: ClaudePromptParseState = { finalOutput: '', assistantTextParts: [] };
 
       child.stdout.on('data', (chunk: Buffer) => {
         const parsed = parseJsonlChunk(chunk.toString(), stdoutBuffer, (line) =>

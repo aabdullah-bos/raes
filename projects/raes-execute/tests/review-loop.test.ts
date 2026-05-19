@@ -298,25 +298,27 @@ test('runReviewLoop: missing provider binary exits 2 without writing', async () 
   }
 });
 
-test('runReviewLoop: warns when provider completes without any final output', async () => {
+test('runReviewLoop: empty provider output exits 2 without prompting or writing', async () => {
   const dir = await makeProject();
   try {
     const out: string[] = [];
+    const err: string[] = [];
     const result = await runReviewLoop(
       { position: 1, label: 'Slice 1: Review the execution loop', complete: false },
       VALID_CONFIG,
       dir,
-      { out: (line) => out.push(line), err: () => {}, in: async () => 'n' },
+      { out: (line) => out.push(line), err: (line) => err.push(line), in: async () => 'y' },
       {
         provider: providerReturning({ output: '' }),
         loadPrompt: () => 'prompt text',
       },
     );
-    assert.equal(result.exitCode, 0);
-    assert.ok(out.includes('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.'));
-    const warningIndex = out.indexOf('[warning] Agent completed without any final summary output. Output recovery fallbacks were attempted but yielded no usable text.');
-    const promptIndex = out.indexOf('Agent output shown above. Record this slice as complete? [y/N]');
-    assert.ok(warningIndex >= 0 && promptIndex > warningIndex);
+    assert.equal(result.exitCode, 2);
+    assert.ok(err.includes('error: provider returned empty final output; refusing to record an ambiguous slice result.'));
+    assert.ok(err.includes('fix: Rerun the slice after resolving the provider issue and confirm the agent returns a non-empty final output.'));
+    assert.ok(!out.includes('Agent output shown above. Record this slice as complete? [y/N]'));
+    const pipeline = readFileSync(join(dir, 'docs/pipeline.md'), 'utf8');
+    assert.ok(pipeline.includes('- [ ] Slice 1: Review the execution loop'));
   } finally {
     rmSync(dir, { recursive: true });
   }

@@ -626,6 +626,12 @@ FLAG trigger points, gating behavior, and operator resolution paths are now defi
 
 This section defines what constitutes a FLAG, when flags are gating, and what the resolution path looks like. It applies to both slice types.
 
+The diagram below is a visual reference for the full execution loop, with flag trigger points and resolution paths marked. It shows the two checkpoint types — pre-execution and mid-execution — and the operator paths each one requires. Prompts and tools implementing RAES should use this flow to ensure their execution model matches the intended behavior described in Sections 12.2–12.4.
+
+**Pre-execution checkpoints** (purple) gate slice start: a hard stop halts the slice entirely until the operator supplies or resolves the missing or conflicting input. **Mid-execution checkpoints** run after the slice completes: a violation marks the slice blocked in `pipeline.md`, and the next slice cannot start until the operator takes one of the three resolution actions defined in Section 12.4. The green record step — updating `pipeline.md` and appending durable decisions — is the only path that advances the loop to the next slice.
+
+![RAES flag classification and handling flow](raes_flag_classification_flow.svg)
+
 ---
 
 ### 12.1 FLAG vs SURFACE

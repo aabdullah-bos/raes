@@ -278,9 +278,115 @@ test('ClaudeCodeProvider: emits progress events while parsing stream-json output
   });
   assert.equal(result.output, 'done');
   assert.deepEqual(events, [
-    { kind: 'status', text: 'Agent response started' },
-    { kind: 'tool', text: 'Read' },
+    { kind: 'status', text: 'Agent response started', phase: 'turn', eventType: 'message_start' },
+    { kind: 'tool', text: 'Read', phase: 'command', eventType: 'content_block_start' },
   ]);
+});
+
+test('ClaudeCodeProvider: emits session started event from system/init', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-opus-4-5', session_id: 'sess-1' }),
+    JSON.stringify({ type: 'result', result: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const result = await provider.submit('test prompt', { onProgress: (e) => events.push(e) });
+  assert.equal(result.output, 'done');
+  assert.deepEqual(events, [
+    { kind: 'status', text: 'Session started (claude-opus-4-5)', phase: 'turn', eventType: 'system' },
+  ]);
+});
+
+test('ClaudeCodeProvider: emits tool and message events from assistant content blocks', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'ls' } },
+          { type: 'text', text: 'Running the command now.' },
+        ],
+      },
+    }),
+    JSON.stringify({ type: 'result', result: 'final answer' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const result = await provider.submit('test prompt', { onProgress: (e) => events.push(e) });
+  assert.equal(result.output, 'final answer');
+  assert.deepEqual(events, [
+    { kind: 'tool', text: 'Bash', phase: 'command', eventType: 'assistant', command: 'Bash' },
+    { kind: 'message', text: 'Running the command now.', phase: 'message', eventType: 'assistant', delta: 'Running the command now.' },
+  ]);
+});
+
+test('ClaudeCodeProvider: falls back to accumulated assistant text when result payload is empty', async () => {
+  const stdoutData = [
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Recovered from assistant content fallback.' }],
+      },
+    }),
+    JSON.stringify({ type: 'result', result: '' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const result = await provider.submit('test prompt');
+  assert.equal(result.output, 'Recovered from assistant content fallback.');
+});
+
+test('ClaudeCodeProvider: unwraps stream_event and accumulates text deltas', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({
+      type: 'stream_event',
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } },
+    }),
+    JSON.stringify({
+      type: 'stream_event',
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'world.' } },
+    }),
+    JSON.stringify({ type: 'result', result: '' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  const result = await provider.submit('test prompt', { onProgress: (e) => events.push(e) });
+  assert.equal(result.output, 'Hello world.');
+  assert.ok(events.some((e) => e.kind === 'message' && e.delta === 'Hello '), 'expected delta event for first chunk');
+  assert.ok(events.some((e) => e.kind === 'message' && e.delta === 'world.'), 'expected delta event for second chunk');
+});
+
+test('ClaudeCodeProvider: emits api_retry warning from system event', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 3 }),
+    JSON.stringify({ type: 'result', result: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  await provider.submit('test prompt', { onProgress: (e) => events.push(e) });
+  assert.ok(events.some((e) => e.kind === 'warning' && /retry.*2/i.test(e.text)), 'expected api_retry warning');
+});
+
+test('ClaudeCodeProvider: emits content_block_start tool_use progress from content_block field', async () => {
+  const events: ProviderProgressEvent[] = [];
+  const stdoutData = [
+    JSON.stringify({
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'tool_use', id: 'tool-1', name: 'Write' },
+    }),
+    JSON.stringify({ type: 'result', result: 'done' }),
+  ].join('\n');
+  const mock = makeSpawnMock({ stdoutData });
+  const provider = new ClaudeCodeProvider(makeConfig('anthropic'), mock.spawnFn);
+  await provider.submit('test prompt', { onProgress: (e) => events.push(e) });
+  assert.ok(events.some((e) => e.kind === 'tool' && e.text === 'Write'), 'expected tool event for Write');
 });
 
 test('ClaudeCodeProvider: startSession returns a closeable session that preserves one-shot submit behavior', async () => {

@@ -592,11 +592,13 @@ The schema was defined and implemented in an Execution Slice (2026-04-19). `raes
 
 ---
 
-**Gap 3: `raes-execute` is not implemented**
+**Gap 3: `raes-execute` is largely implemented** ✓ Substantially resolved
 
-`raes-execute --next-slice` is described in Section 5 as the tool that automates what the canonical prompt currently does manually. It does not exist. Currently, operators copy and paste the canonical prompt (Section 6) into their AI tool of choice.
+`raes-execute` exists and is usable today as a disciplined CLI for working through one slice at a time. It implements config validation (`--check-config`), artifact inspection (`--print-artifact`), pipeline and status views (`--status`, `--list-slices`, `--show-next-slice`), dry-run preflight (`--dry-run`), artifact-boundary enforcement, provider-backed execution and review loops (`--execute-next-slice`), workspace/monorepo support (`--project`, `--workspace`), and confirmation-gated slice completion. Three providers are supported: `anthropic`, `openai`, and `github_copilot`.
 
-*Dependency: Requires Gap 1 to be resolved first.*
+Remaining gaps: `--history` and `--flag` are listed in the CLI reference but not yet implemented; slice loop type is inferred from pipeline labels rather than explicit typing; and execution focuses on running the provider loop and marking pipeline progress rather than fully automating richer artifact updates or project history management.
+
+*Dependency on Gap 1 (raes-init) is resolved — raes-init is also usable and generates the config and artifacts that raes-execute consumes.*
 
 ---
 

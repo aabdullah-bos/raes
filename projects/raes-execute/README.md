@@ -170,7 +170,7 @@ provider:
 
 Requires the `claude` CLI and `ANTHROPIC_API_KEY` in your environment.
 
-### OpenAI (Codex / GPT)
+### OpenAI (GPT)
 
 ```yaml
 provider:
@@ -228,13 +228,31 @@ raes-execute --project frontend --status
 
 ### Execution Loop
 
-For implementation slices. Sequence: ANALYZE → PLAN → GENERATE → IMPLEMENT → TEST → EXPLAIN → FLAG → REVIEW → RECORD.
+For implementation slices. Steps:
+
+1. ANALYZE
+2. PLAN
+3. GENERATE
+4. IMPLEMENT
+5. TEST
+6. EXPLAIN
+7. FLAG
+8. REVIEW
+9. RECORD
 
 The provider executes the loop, writes only to designated artifacts, and the operator confirms before the slice is marked complete.
 
 ### Review Loop
 
-For review and decision slices. Sequence: PLAN → SLICE → INSPECT → SYNTHESIZE → FLAG → REVIEW → RECORD.
+For review and decision slices. Steps:
+
+1. PLAN
+2. SLICE
+3. INSPECT
+4. SYNTHESIZE
+5. FLAG
+6. REVIEW
+7. RECORD
 
 The provider inspects authoritative artifacts, surfaces gaps, and records findings in `decisions.md`. No implementation code is written.
 

@@ -190,7 +190,7 @@ This hierarchy does not authorize Codex to:
 * correct the SRS documents;
 * change architecture.md;
 * resolve open architectural questions;
-* convert future requirements into claims about current behavior;
+* convert future requiremenvalidatoin.mdts into claims about current behavior;
 * treat generated behavioral contracts as self-validating.
 
 The purpose of the hierarchy is to make the resulting contracts accurate, reviewable, and useful as inputs to later design and implementation work.
@@ -244,7 +244,7 @@ Read, at minimum:
 * projects/raes-init/docs/system.md
 * projects/raes-init/docs/decisions.md
 * projects/raes-init/docs/pipeline.md
-* projects/raes-init/docs/validatoin.md
+* projects/raes-init/docs/validation.md
 * projects/raes-init/docs/execution-guidance.md
 * projects/raes-init/README.md
 * projects/raes-init/package.json

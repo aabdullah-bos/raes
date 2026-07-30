@@ -378,6 +378,32 @@ Codex-specific capabilities may be used to improve the implementation and user e
 
 Codex-specific behavior must remain distinguishable from the RAES methodology itself so that another execution runtime could implement the same artifact and policy contracts in the future.
 
+### Semantic compilation trust boundary
+
+Codex-native initialization compiles human-authored intent into derived RAES artifacts. This creates a trust boundary between deterministic enforcement and model-mediated semantic judgment.
+
+The deterministic kernel can prove structural and state properties such as source preservation, artifact shape, configuration compatibility, pipeline grammar, destination safety, and transactional installation. It cannot independently prove that `system.md` faithfully captures the durable requirements in the PRD and SRS or that `pipeline.md` completely and correctly decomposes the approved work.
+
+Semantic initialization review must therefore evaluate three separate properties:
+
+* **grounding:** derived claims and work are supported by authoritative sources or repository evidence;
+* **consistency:** generated artifacts do not contradict authoritative sources or one another; and
+* **coverage:** every approved actionable requirement is represented by a constraint, slice, validation expectation, explicit unknown, exclusion, or blocker.
+
+Passing deterministic validation must not be presented as evidence that these semantic properties have been mechanically proven. Stage 1 requires interactive Codex review before commit and must report that review separately from deterministic validation.
+
+The remaining architectural exposure is that the review is model-mediated and is not yet backed by complete, independently checkable requirements-to-artifact evidence. A successful initialization is a reviewed compilation of intent, not a formal proof of requirements coverage.
+
+Future evolution should consider a durable requirements inventory or coverage manifest that connects authoritative PRD and SRS statements to:
+
+* durable constraints in `system.md`;
+* implementation or review slices in `pipeline.md`;
+* validation expectations;
+* explicit exclusions; and
+* unresolved or blocking issues.
+
+Such evidence should improve omission and invention detection without requiring Stage 1 to embed traceability metadata in every pipeline declaration. The canonical Stage 1 procedure and reporting requirements are defined in `docs/stage-1-init.md`, `## Semantic Validation Boundary`.
+
 ## Slice State and Acceptance Model
 
 The Codex-native implementation must represent slice progress in a way that distinguishes work performed by the agent from work accepted as complete by the user.
@@ -729,6 +755,9 @@ These evaluations should determine whether Codex:
 
 * reads the required authoritative artifacts;
 * respects the authority assigned to each artifact;
+* grounds each substantive derived claim in an authoritative source or repository evidence;
+* detects contradictions between generated artifacts and approved sources;
+* accounts for every approved actionable requirement or classifies its omission explicitly;
 * uses the slice selected by the deterministic mechanism;
 * distinguishes execution work from review work;
 * plans only the selected slice;
@@ -790,6 +819,8 @@ Other qualities may initially require human review.
 Examples include:
 
 * whether Codex invented intent;
+* whether `system.md` faithfully captures durable source constraints;
+* whether the generated pipeline covers the approved actionable scope;
 * whether ambiguity was material;
 * whether a review output is substantively useful;
 * whether the explanation accurately represents the change;
@@ -1376,6 +1407,8 @@ Codex may appear to follow the methodology in normal cases while still being abl
 #### Remaining exposure:
 
 Some semantic judgments, such as whether ambiguity is material or whether work remains conceptually within scope, will continue to depend partly on model reasoning and human review.
+
+Initialization adds a specific remaining exposure: a structurally valid `system.md` or pipeline may still omit, distort, or invent requirements. The Stage 1 initializer mitigates this with an explicit grounding, consistency, and coverage review, but that review is not independently proven until stronger semantic evidence such as a requirements inventory or coverage manifest is adopted.
 
 Incorrect interpretation of artifact authority
 

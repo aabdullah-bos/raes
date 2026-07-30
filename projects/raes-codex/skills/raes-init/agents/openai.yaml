@@ -1,0 +1,4 @@
+interface:
+  display_name: "RAES Init"
+  short_description: "Compile explicit intent into a Stage 1 RAES project"
+  default_prompt: "Use $raes-init to initialize this project from the explicitly supplied PRD and optional categorized sources."

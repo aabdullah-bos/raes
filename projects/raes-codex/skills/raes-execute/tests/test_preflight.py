@@ -33,6 +33,7 @@ class PreflightTests(unittest.TestCase):
     def test_valid_execution_slice_is_selected(self) -> None:
         result = self.run_preflight()
         self.assertEqual("ready", result["status"])
+        self.assertEqual("1.0", result["contract_version"])
         self.assertEqual("S-0002", result["slice"]["id"])
         self.assertEqual("execution", result["slice"]["type"])
         self.assertFalse(result["slice"]["checked"])
@@ -116,6 +117,27 @@ class PreflightTests(unittest.TestCase):
     def test_malformed_config_fails_closed(self) -> None:
         (self.project / "raes.config.yaml").write_text("sources:\n  build_intent\n")
         self.assertIn("MALFORMED_CONFIG", error_codes(self.run_preflight()))
+
+    def test_missing_contract_version_blocks_before_artifact_resolution(self) -> None:
+        config = self.project / "raes.config.yaml"
+        config.write_text(config.read_text().replace('raes:\n  contract_version: "1.0"\n', ""))
+        (self.project / "docs" / "system.md").unlink()
+        result = self.run_preflight()
+        self.assertIn("INVALID_CONFIG_SCHEMA", error_codes(result))
+        self.assertNotIn("MISSING_ARTIFACT", error_codes(result))
+
+    def test_unsupported_contract_version_reports_declared_and_supported(self) -> None:
+        config = self.project / "raes.config.yaml"
+        config.write_text(config.read_text().replace('"1.0"', '"2.0"'))
+        result = self.run_preflight()
+        self.assertIn("UNSUPPORTED_CONTRACT_VERSION", error_codes(result))
+        self.assertIn("'2.0'", result["errors"][0]["message"])
+        self.assertIn("'1.0'", result["errors"][0]["message"])
+
+    def test_unquoted_numeric_contract_version_is_malformed(self) -> None:
+        config = self.project / "raes.config.yaml"
+        config.write_text(config.read_text().replace('"1.0"', "1.0"))
+        self.assertIn("MISSING_OR_MALFORMED_CONTRACT_VERSION", error_codes(self.run_preflight()))
 
     def test_preflight_cli_emits_json_and_makes_no_changes(self) -> None:
         before = {path: path.read_bytes() for path in self.project.rglob("*") if path.is_file()}

@@ -1,3 +1,5 @@
+raes:
+  contract_version: "1.0"
 project:
   name: fixture-project
 

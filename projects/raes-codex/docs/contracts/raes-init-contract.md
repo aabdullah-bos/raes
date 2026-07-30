@@ -244,7 +244,40 @@ Validation on 2026-07-23:
 
 These classifications follow `projects/raes-codex/docs/architecture.md`, “Stage 1,” “Deterministic RAES kernel,” “Slice State and Acceptance Model,” and “Versioning and Evolution.”
 
-## 11. Open questions
+## 11. Codex-native Stage 1 semantic verification requirement
+
+This section specifies the Codex-native Stage 1 requirement derived from the legacy limitations documented above. It does not claim that the legacy TypeScript initializer implements this behavior.
+
+Deterministic candidate validation must report only mechanically established facts. It must not claim to prove that generated artifacts faithfully implement or describe the PRD or SRS.
+
+Before committing a Codex-native Stage 1 candidate, the interactive initializer must separately review:
+
+1. **Grounding:** Every substantive derived claim and pipeline item has support in an approved source or explicit repository evidence.
+2. **Consistency:** Generated artifacts do not contradict approved sources, resolved authority, or one another.
+3. **Coverage:** Every approved actionable requirement is represented by a durable constraint, pipeline slice, validation expectation, explicit unknown, exclusion, or blocker.
+
+The semantic review must fail closed when it identifies:
+
+- an unsupported or invented requirement;
+- a material source contradiction;
+- an unaccounted-for approved requirement;
+- a `system.md` constraint that cannot be grounded;
+- a pipeline slice that cannot be justified by known scope; or
+- an ambiguity whose resolution could invalidate pipeline inventory or ordering.
+
+Observable successful behavior must distinguish deterministic validation from semantic review and report:
+
+- deterministic validation status;
+- semantic grounding, consistency, and coverage status;
+- unresolved non-blocking ambiguities;
+- any explicit exclusions and their authority; and
+- the evidence basis used to determine known-scope coverage.
+
+This review is required but is not a mechanical proof. Stage 1 therefore has a remaining verification gap: it does not yet produce complete, independently inspectable requirements-to-artifact correspondence. The canonical procedure and trust-boundary statement are defined in `projects/raes-codex/docs/stage-1-init.md`, `## Semantic Validation Boundary`.
+
+A future contract may add a durable requirements inventory or coverage manifest mapping authoritative PRD and SRS statements to `system.md`, pipeline slices, validation expectations, exclusions, and unresolved issues. Adding such an artifact or making it authoritative would require an explicit project-contract decision.
+
+## 12. Open questions
 
 1. **What legacy unversioned init output must Codex-native RAES support?** Current projects declare no contract version, while architecture requires explicit supported ranges and fail-closed behavior. The architecture, both CLIs, config examples, and reference were inspected. A legacy-policy decision is required and blocks a safe Stage 1 compatibility boundary.
 2. **What canonical backlog grammar permits milestones?** Init emits level-three milestone headings; execute treats the first such heading as the end of the backlog. Source, tests, templates, and reference were inspected. A shared grammar decision and interoperability test are required; this blocks out-of-box Stage 1 init-to-execute use.
@@ -253,7 +286,7 @@ These classifications follow `projects/raes-codex/docs/architecture.md`, “Stag
 5. **Which archetype semantics are durable RAES contract versus prototype convenience?** PRD, SRS, templates, and renderers differ. A product/contract decision is needed, but it need not block a minimal intent-driven Stage 1.
 6. **What transactional boundary applies to initialization?** The SRS says complete-or-nothing, but code does not implement it and architecture requires safe durable state. A deterministic write/rollback policy is required for Stage 1.
 
-## 12. Contract summary
+## 13. Contract summary
 
 The current `raes-init` reliably demonstrates a narrow eight-file bootstrap, normal existing-file protection, three archetype fallbacks, six-call model-backed PRD generation, heading-substring validation, and optional workspace registration. Its reusable deterministic ideas are fixed artifact roles, explicit source mapping, early ordinary conflict checks, and separation of prompt generation from file placement.
 

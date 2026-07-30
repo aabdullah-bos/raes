@@ -24,6 +24,7 @@ REQUIRED_SOURCES = (
     "execution_guidance",
     "validation",
 )
+SUPPORTED_CONTRACT_VERSION = "1.0"
 KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 SLICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SLICE_DECLARATION_PATTERN = re.compile(r"^- \[([ xX])\]\s+([^|]*)\|([^|]*)\|(.*)$")
@@ -124,7 +125,7 @@ def read_regular_file(path: Path, display_path: str, role: str) -> tuple[str | N
         )
 
 
-def _parse_scalar(raw: str, line_number: int) -> str:
+def _parse_scalar(raw: str, line_number: int) -> Any:
     value = raw.strip()
     if value.startswith(("'", '"')):
         try:
@@ -151,6 +152,8 @@ def _parse_scalar(raw: str, line_number: int) -> str:
                 )
             ]
         )
+    if re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", value):
+        return float(value)
     return value
 
 
@@ -268,6 +271,28 @@ def extract_source_paths(config: dict[str, Any]) -> dict[str, str]:
             ]
         )
     return paths
+
+
+def extract_contract_version(config: dict[str, Any]) -> str:
+    raes = _mapping(config.get("raes"), "raes")
+    version = raes.get("contract_version")
+    if not isinstance(version, str) or not version.strip():
+        raise PreflightFailure([make_error(
+            "MISSING_OR_MALFORMED_CONTRACT_VERSION",
+            f"RAES contract version must be the string {SUPPORTED_CONTRACT_VERSION!r}.",
+            path="raes.config.yaml",
+        )])
+    version = version.strip()
+    if version != SUPPORTED_CONTRACT_VERSION:
+        problem = make_error(
+            "UNSUPPORTED_CONTRACT_VERSION",
+            f"Declared RAES contract version {version!r} is unsupported; this executor supports {SUPPORTED_CONTRACT_VERSION!r}.",
+            path="raes.config.yaml",
+        )
+        problem["declared_contract_version"] = version
+        problem["supported_contract_version"] = SUPPORTED_CONTRACT_VERSION
+        raise PreflightFailure([problem])
+    return version
 
 
 def resolve_artifacts(
@@ -505,7 +530,11 @@ def parse_pipeline(content: str, path: str = "docs/pipeline.md") -> ParsedPipeli
 
 
 def _blocked(errors: list[dict[str, Any]], project_root: Path | None = None) -> dict[str, Any]:
-    result: dict[str, Any] = {"status": "blocked", "errors": errors}
+    result: dict[str, Any] = {
+        "status": "blocked",
+        "errors": errors,
+        "supported_contract_version": SUPPORTED_CONTRACT_VERSION,
+    }
     if project_root is not None:
         result["project_root"] = str(project_root)
     return result
@@ -546,6 +575,7 @@ def preflight_project(project_root: str | os.PathLike[str]) -> dict[str, Any]:
 
     try:
         config = parse_config(config_text or "")
+        contract_version = extract_contract_version(config)
         configured_paths = extract_source_paths(config)
         artifacts, resolved_artifacts, contents = resolve_artifacts(root, configured_paths)
         parsed = parse_pipeline(contents["next_slice"], artifacts["next_slice"])
@@ -570,6 +600,8 @@ def preflight_project(project_root: str | os.PathLike[str]) -> dict[str, Any]:
         "status": "ready",
         "project_root": str(root),
         "config_path": str(config_path),
+        "contract_version": contract_version,
+        "supported_contract_version": SUPPORTED_CONTRACT_VERSION,
         "artifacts": artifacts,
         "artifact_paths": {role: str(path) for role, path in resolved_artifacts.items()},
         "pipeline": {

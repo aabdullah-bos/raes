@@ -49,6 +49,7 @@ INSPECT, then SYNTHESIZE. No implementation.
 
 ## 4. Validation evidence and inspection (deterministic)
 Write `"$S/validation.json"`: a list with one entry per check you ran, each with `command`, `source` (the file that defines the check), `exit_code`, `result` (`passed` or `failed`) and a short `output`. A review slice records the commands and queries it ran as checks.
+A review slice records **checks of its own work** in `validation.json` (for example `git status --porcelain` from the repository root showing no unexpected changes, and that each planned query ran). The project's test results, including missing or failing suites, are **findings**: report them in the handoff note, not in `validation.json`, because a missing or failed entry blocks acceptance.
 ```sh
 python3 <skill-dir>/scripts/inspect_result.py inspect --project-root <root> \
   --baseline-json "$S/baseline.json" --preflight-json "$S/preflight.json" \

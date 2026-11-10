@@ -44,6 +44,7 @@ Things move between layers:
 - **Define done per slice first.** When the same check shows up in three slices, promote it to the project level. If you keep forgetting to run it, turn it into a hook.
 - **Invariants usually start as decisions.** A recorded decision gets promoted to an invariant once later work depends on it.
 - **Start with one file (`AGENTS.md`) plus two small docs.** Split a section into its own file when it gets long or when most tasks don't need it.
+- **Consolidating instruction files into `AGENTS.md` is a review, not a copy.** When you merge an existing `CLAUDE.md`, README or other agent guide into `AGENTS.md`, check each claim against the code first. Once a claim is in the shared file, every agent treats it as true, so a stale line gains authority. Mark anything you can't verify as unverified, and leave it for a review slice to settle.
 - **Use a review slice with a `question:` line when you need knowledge first.** It can run commands and disposable local environments, and its output is knowledge (resolved Unknowns, contracts, proposed decisions), not code you keep.
 
 ## The slice contract

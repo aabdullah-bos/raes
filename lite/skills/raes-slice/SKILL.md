@@ -1,38 +1,67 @@
 ---
 name: raes-slice
-description: Execute exactly one RAES slice (execution, review, or learning) from docs/pipeline.md, following the rules in AGENTS.md. Use when asked to run, work, or continue the next slice. Supports --dry-run to preview the slice without making changes.
+description: Execute exactly one RAES slice (execution or review) from docs/pipeline.md, following the rules in AGENTS.md, with deterministic preflight, inspection and acceptance scripts. Use when asked to run, work, or continue the next slice. Supports --dry-run to preview the slice without making changes.
 ---
 
 # Run one RAES slice
 
-Follow the RAES working rules in `AGENTS.md` (Always, Scope, Flag, Stuck). This skill adds the procedure.
+Follow the RAES working rules in `AGENTS.md` (Always, Scope, Flag, Stuck). This skill adds the procedure and the deterministic checks.
 
-## 1. Locate and select
-1. If a `raes.workspace.yaml` exists, use the project named in the request; if none is named and there are several, ask. If the project has a `raes.config.yaml`, load every source it lists. Otherwise use the lite layout: `AGENTS.md`, `docs/pipeline.md`, `docs/decisions.md`.
-2. Select the first unchecked slice (`- [ ]`) and read its `type:`, `scope:`, `out_of_scope:` and `experiment:` lines.
-3. Before editing anything, reply with: the slice, its type, the scope you will stay inside, and the checks that define done. If any Flag condition is already true, flag now instead.
+## Setup
+- `<skill-dir>` is the folder that contains this `SKILL.md`. The scripts need `python3` and `git` and nothing else.
+- `<root>` is the project root. If a `raes.workspace.yaml` exists, use the project named in the request (ask if none is named and there are several). Otherwise use the repository root.
+- Keep session evidence outside the repository: `S=$(mktemp -d)`.
+
+## 1. Preflight (deterministic)
+```sh
+python3 <skill-dir>/scripts/preflight.py --project-root <root> > "$S/preflight.json"
+```
+- Read the JSON even when the exit code is 2. Continue only when `status` is `ready`.
+- On `blocked`, report every error with its fix, make no changes, and stop.
+- From the result, take: `layout` (`config` or `lite`), the `artifacts` to read, and the selected `slice`: `id`, `type` (from the declaration only, never inferred from the label) and `fields` (`scope`, `out_of_scope`, `question`, `experiment`, `allowed_paths`).
+- Read every artifact listed in `artifacts` in full.
 
 ## Dry run (`--dry-run` in the request)
-Do step 1 only, then stop. Make no edits to any file.
-- If a deterministic checker such as `raes-execute` is installed, run its dry run and report the output.
-- Report: the selected slice and its type; its scope and out-of-scope; the checks that define done; and whether each validation command exists and can run here.
+Run step 1 only, then stop. Make no edits to any file.
+- Report: the selected slice, its type and fields, the checks that would define done, and whether each validation command exists and can run here.
 - List any Flag or Stuck conditions that are already true. End with "Dry run only: no changes made."
 
-## 2. Execution slice
-ANALYZE, then PLAN, then GENERATE (failing tests or checks first), then IMPLEMENT (minimum change), then TEST (the done checks), then EXPLAIN, FLAG, REVIEW and RECORD.
+## 2. Baseline (deterministic)
+```sh
+python3 <skill-dir>/scripts/inspect_result.py baseline --project-root <root> > "$S/baseline.json"
+```
+Before editing anything, reply with: the slice, its type, the scope you'll stay inside, and the checks that define done. If any Flag condition is already true, flag now instead.
+
+## 3a. Execution slice
+ANALYZE, then PLAN, then GENERATE (failing tests or checks first), then IMPLEMENT (minimum change), then TEST (the done checks), then EXPLAIN.
 For infrastructure: you may iterate on plan, and must never apply. Summarize the plan as counts of add, change and destroy, list every destroy or replace explicitly, and flag any change to IAM, networking, state or shared resources.
 
-## 3. Review slice
-INSPECT, then SYNTHESIZE, then FLAG, REVIEW and RECORD. No implementation.
-For evidence that only the human can supply (access, manual checks): prepare a checklist, ask for each item, and record only what the human actually gives you.
+## 3b. Review slice
+INSPECT, then SYNTHESIZE. No implementation.
+- You may run commands, read-only queries and disposable local environments.
+- You may change only the decision log and the paths in `allowed_paths`. Everything else, including untracked files left in the repo, blocks the slice at inspection.
+- With a `question:` line, the slice is done when the question is answered with evidence, or shown to be unanswerable with what's available.
+- For evidence only the human can supply, prepare a checklist and record only what the human actually gives you.
 
-## 4. Learning slice
-Read-only investigation, plus throwaway experiments if the slice allows them. The output is knowledge, not code you keep: resolved or newly found Unknowns, discovered contracts and their consumers, proposed decisions (with the condition that would confirm or overturn each one), and the next 2–3 slices proposed with type and scope.
+## Both types: what you may write during the slice
+- **Never edit the pipeline file during the slice.** Inspection blocks any change to it, and acceptance ticks the checkbox. Handoff notes are written in step 6.
+- You may append proposed decisions (status `proposed`) to the decision log.
 
-## 5. Record
-- Add a handoff note to `docs/pipeline.md`: what was done, the validation results, flags raised, proposed decisions, and the next recommended slice.
-- If the slice has an `experiment:` line, add one line saying whether the prediction held, with the evidence.
-- Add proposed decisions to `docs/decisions.md` with status `proposed`.
+## 4. Validation evidence and inspection (deterministic)
+Write `"$S/validation.json"`: a list with one entry per check you ran, each with `command`, `source` (the file that defines the check), `exit_code`, `result` (`passed` or `failed`) and a short `output`. A review slice records the commands and queries it ran as checks.
+```sh
+python3 <skill-dir>/scripts/inspect_result.py inspect --project-root <root> \
+  --baseline-json "$S/baseline.json" --preflight-json "$S/preflight.json" \
+  --validation-json "$S/validation.json" --scope-decision unreviewed > "$S/inspection.json"
+```
+The slice's `allowed_paths` are applied automatically, and `--allowed-path` adds more. Review the reported changes and warnings against the slice's scope, then rerun with `--scope-decision in_scope` or `out_of_scope`. Statuses: `validated`, `ready_for_review`, `implemented_but_not_validated`, `blocked`.
 
-## 6. Review gate and stop
-Show a short summary with the riskiest change or open question first. Ask the human to confirm completion (yes or no). Mark the slice `- [x]` only after an explicit yes. Then stop; do not start the next slice.
+## 5. Review gate and acceptance
+Show a short summary with the riskiest change or open question first, plus the inspection status. Ask the human to confirm completion (yes or no). Only after an explicit yes, and only when the status is `validated`:
+```sh
+python3 <skill-dir>/scripts/accept_slice.py --project-root <root> --evidence-json "$S/inspection.json" --slice-id <id>
+```
+Never tick the checkbox by hand.
+
+## 6. Handoff note, then stop
+After acceptance, or after a blocked or unvalidated result, append a handoff note under `## Handoff Notes`, headed with the slice ID. Cover what was done, the validation results, flags raised, proposed decisions, the next recommended slice, and (if the slice has an `experiment:` line) whether the prediction held, with the evidence. A note for an unfinished slice starts with `BLOCKED:`. Then stop. Do not start the next slice.

@@ -44,15 +44,26 @@ Things move between layers:
 - **Define done per slice first.** When the same check shows up in three slices, promote it to the project level. If you keep forgetting to run it, turn it into a hook.
 - **Invariants usually start as decisions.** A recorded decision gets promoted to an invariant once later work depends on it.
 - **Start with one file (`AGENTS.md`) plus two small docs.** Split a section into its own file when it gets long or when most tasks don't need it.
-- **Use a learning slice when you need knowledge first.** Its output is knowledge (resolved Unknowns, contracts, proposed decisions), not code you keep.
+- **Use a review slice with a `question:` line when you need knowledge first.** It can run commands and disposable local environments, and its output is knowledge (resolved Unknowns, contracts, proposed decisions), not code you keep.
 
 ## The slice contract
 
-Each slice in `docs/pipeline.md` can declare:
-- `type`: execution, review, or learning
+Each slice in `docs/pipeline.md` is one line:
+
+```
+- [ ] <stable-id> | <execution|review> | <label>
+```
+
+IDs are stable and never reused. The type comes from the declaration only, never from the label. Optional body lines, indented under the declaration:
 - `scope`: the edges the agent must stay inside
 - `out_of_scope`: what it must not touch
+- `question`: for review slices, the question the slice must answer with evidence
 - `experiment`: a falsifiable prediction, checked and recorded at the end of the slice
+- `allowed_paths`: comma-separated path globs the slice may change. `scope` is prose for people; `allowed_paths` is what the scripts check
+
+There are two slice types:
+- **Execution** changes code. Tests or checks come first, then the minimum change.
+- **Review** changes no tracked code, schema or config. It may run commands, read-only queries and disposable local environments. It may change only the decision log and its `allowed_paths`, and inspection blocks anything else.
 
 What the agent must do, and when it must flag or stop, is defined once in `AGENTS.md`.
 
@@ -66,7 +77,7 @@ What the agent must do, and when it must flag or stop, is defined once in `AGENT
 ## Execution
 
 - Slices run inside the agent through the `/raes-slice` skill. `/raes-slice --dry-run` previews a slice without making changes.
-- The old CLI's prompt loop isn't used. Keep any deterministic checks it has (config and boundary validation) if it's installed.
+- Deterministic checks run from scripts bundled with the skill: `preflight.py` (validate the project and select the slice), `inspect_result.py` (baseline, then compare changes against scope and validation evidence) and `accept_slice.py` (tick the checkbox only after an explicit yes). They need only `python3` and `git`, so every provider can run them.
 - **To try later:** a thin coordinator that does only what a single agent can't, such as a fact sheet built from the artifacts, plan checks, threshold gates, a trace log, and dispatch across providers.
 
 ## Verification, added in stages
@@ -106,7 +117,7 @@ What the agent must do, and when it must flag or stop, is defined once in `AGENT
 ```
 lite/
   README.md               # this file: direction, principles, slice contract
-  bootstrap-prompt.md     # paste into an agent to run Slice 0 (orientation) in a new repo
+  bootstrap-prompt.md     # paste into an agent to run S-0000 (orientation) in a new repo
   templates/              # provider-agnostic: AGENTS, pipeline, decisions
   skills/raes-slice/      # SKILL.md in the open Agent Skills format
   adapters/
@@ -124,9 +135,20 @@ Copy these into the target repo:
 - `templates/decisions.template.md` becomes `docs/decisions.md`
 - For your provider, follow its adapter's `README.md` (for example `adapters/claude-code/`)
 
-Then run Slice 0 using `bootstrap-prompt.md`.
+Then run S-0000 (orientation) using `bootstrap-prompt.md`.
+
+## Design decisions
+
+| ID | Decision | Status | Revisit when |
+|---|---|---|---|
+| L-001 | Slices use stable IDs: `- [ ] <id> \| <type> \| <label>`, the format the deterministic scripts already parse | accepted | — |
+| L-002 | Two slice types (execution, review). Review is widened to allow commands, read-only queries and disposable environments; there is no separate learning type | provisional | A slice first needs throwaway code (a spike) to answer its question |
+| L-004 | The pipeline file is frozen during a slice. `accept_slice.py` ticks the checkbox, and the handoff note is written after acceptance (or after a blocked result) | accepted | Handoff notes written after acceptance prove unreliable |
+| L-005 | `allowed_paths` (globs the scripts check) is a separate body line from `scope` (prose for people) | accepted | — |
+| L-003 | The orientation slice (S-0000) is how RAES is applied to an existing repo. It stands in for the planned `raes-discover` CLI | provisional | Orientation proves too manual to repeat across repos |
 
 ## Next steps for the kit
 
-- **Bundle deterministic checks with the skill.** Today the skill runs a deterministic preflight only if `raes-execute` is installed. `projects/raes-codex` already has tested Python preflight and slice-acceptance scripts. Moving them under `skills/raes-slice/scripts/` would give every provider deterministic checks without a separate CLI.
+- **Deterministic checks are bundled with the skill.** `skills/raes-slice/scripts/` holds `preflight.py`, `inspect_result.py` and `accept_slice.py`, copied from `projects/raes-codex` and adapted for the lite layout, slice body fields and review-slice path rules. Run their tests from the skill folder: `python3 -m unittest discover -s tests`.
 - **Add adapters** for Codex and Copilot.
+- **Migrate existing projects** (for example Me Fighter) to stable slice IDs, so the scripts can parse them.

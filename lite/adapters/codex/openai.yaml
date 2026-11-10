@@ -1,0 +1,4 @@
+interface:
+  display_name: "RAES Execute"
+  short_description: "Execute one RAES slice with explicit acceptance"
+  default_prompt: "Use $raes-execute to execute exactly one validated RAES slice and request explicit acceptance."

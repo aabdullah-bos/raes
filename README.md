@@ -13,6 +13,8 @@ RAES does not allow important decisions to remain implicit.
 
 `raes-execute` is also usable today as a disciplined CLI for working through one slice at a time. It already implements config validation, artifact inspection, pipeline/status views, dry-run preflight, artifact-boundary checks, provider-backed execution/review loops, and confirmation-gated slice completion. The main gaps are around surface area and depth: some advertised commands such as `--history` and `--flag` are still unimplemented, slice typing is inferred from pipeline labels, and execution currently focuses on running the provider loop and marking pipeline progress rather than fully automating richer artifact updates or project history management.
 
+RAES Lite, a lighter kit that runs inside the agent you already use (Claude Code, Codex or Copilot) through plain files and a skill, now lives in its own repository: [raes-lite](https://github.com/aabdullah-bos/raes-lite).
+
 ---
 
 ## AI Execution Systems
